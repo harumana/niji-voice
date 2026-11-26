@@ -202,9 +202,10 @@ function coverMap() {
   if (!folderCoverMap) folderCoverMap = new Map(Object.entries(loadJSON(folderCoverMapKey(), {})));
   return folderCoverMap;
 }
+const folderCoverMissKey = () => `niji.covermiss.v2.${settings.rootId || 'default'}`;
 let folderCoverMiss = null;
 function coverMiss() {
-  if (!folderCoverMiss) folderCoverMiss = new Set(loadJSON(folderCoverMapKey() + '.miss', []));
+  if (!folderCoverMiss) folderCoverMiss = new Set(loadJSON(folderCoverMissKey(), []));
   return folderCoverMiss;
 }
 function rememberFolderMiss(folderId) {
@@ -212,7 +213,7 @@ function rememberFolderMiss(folderId) {
   const m = coverMiss();
   if (m.has(folderId)) return;
   m.add(folderId);
-  try { saveJSON(folderCoverMapKey() + '.miss', [...m].slice(-4000)); } catch {}
+  try { saveJSON(folderCoverMissKey(), [...m].slice(-4000)); } catch {}
 }
 
 function rememberFolderCover(folderId, imageId) {
@@ -1482,14 +1483,15 @@ function renderThemeDetail(tag) {
   }
   const compact = state.themeCompact !== false;
   const shortLiver = (n) => String(n || '기타').replace(/\s*\([^)]*\)\s*$/, '');
+  const playBtn = (liver) => `<button type="button" class="ttrk-play" data-act="theme-liver-play" data-liver="${esc(liver)}" aria-label="${esc(shortLiver(liver))} 전체 재생" title="이 라이버 트랙 전부 이어 듣기"><svg><use href="#i-play"/></svg></button>`;
   const cells = [...byLiver.entries()].map(([liver, list]) => `
     <div class="tcell">
-      <div class="tcell-name">${esc(shortLiver(liver))}<span>${list.length}</span></div>
+      <div class="tcell-name">${playBtn(liver)}<span class="tn">${esc(shortLiver(liver))}</span><span class="tc">${list.length}</span></div>
       <div class="tcell-tracks">${list.map((f) => `
         <button type="button" class="ttrk ${player?.current?.id === f.id ? 'is-on' : ''}" data-act="theme-track" data-id="${esc(f.id)}" title="${esc(displayTitleOf(f, { short: true }))}" aria-label="${esc(liver)} ${esc(trackNoFor(f))}">${esc(trackNoFor(f))}</button>`).join('')}</div>
     </div>`).join('');
   const blocks = [...byLiver.entries()].map(([liver, list]) => `
-    <h3 class="col-liver">${esc(liver)}<span>${list.length}</span></h3>
+    <h3 class="col-liver">${playBtn(liver)}<span class="tn">${esc(liver)}</span><span class="tc">${list.length}</span></h3>
     <div class="sd-tracks">${list.map((f) => cardHTML(f)).join('')}</div>`).join('');
   area.innerHTML = `
     <div class="sd-bar">
@@ -1498,7 +1500,7 @@ function renderThemeDetail(tag) {
     <h2 class="sd-title">${esc(tag)}</h2>
     <div class="sd-meta">보이스 ${files.length}개 · 라이버 ${byLiver.size}명
       <span class="theme-view">
-        <button type="button" class="${compact ? 'is-on' : ''}" data-act="theme-view" data-compact="1">번호</button>
+        <button type="button" class="${compact ? 'is-on' : ''}" data-act="theme-view" data-compact="1">요약</button>
         <button type="button" class="${compact ? '' : 'is-on'}" data-act="theme-view" data-compact="0">목록</button>
       </span>
     </div>
@@ -3079,7 +3081,7 @@ function openNowPlaying() {
         <button type="button" class="np-pill ${player.ab.a != null ? 'is-on' : ''}" id="npAB" data-act="np-ab">A–B</button>
         <button type="button" class="np-pill" id="npRate" data-act="np-rate">${rateLabel(player.rate)}</button>
         <button type="button" class="np-pill ${player.sleep.mode ? 'is-on' : ''}" id="npSleep" data-act="np-sleep"><svg><use href="#i-moon"/></svg>취침</button>
-        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>대기열</button>
+        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>이어 듣기</button>
         <button type="button" class="np-pill" data-act="np-more"><svg><use href="#i-more"/></svg>더보기</button>
       </div>
       <div class="np-optrow" id="npSleepOpt" hidden>
@@ -3336,13 +3338,13 @@ function updateNowLyric(time) {
   }
 }
 
-/* queue — 대기열에서 곡을 빼고, 고르고, 옮길 수 있다 */
+/* queue — 이어 듣기 목록에서 곡을 빼고, 고르고, 옮길 수 있다 */
 function openQueue() {
   ui.sheet = 'queue';
   ui.queueSel = ui.queueSel || new Set();
   ui.queueSel.clear();
   ui.queueSelect = false;
-  const body = openSheet('재생 목록', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
+  const body = openSheet('이어 듣기', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
 
   const dropAt = (indexes) => {
     if (!player || !indexes.length) return;
@@ -3351,7 +3353,7 @@ function openQueue() {
     render();
     refreshNowSheet();
     renderList();
-    if (!player.queue.length) toast('재생 목록이 비었어요 — 지금 곡은 계속 재생돼요');
+    if (!player.queue.length) toast('이어 듣기 목록이 비었어요 — 지금 곡은 계속 재생돼요');
   };
 
   const bindSwipe = () => {
@@ -3397,14 +3399,14 @@ function openQueue() {
   const render = () => {
     const q = player?.queue || [];
     if (!q.length) {
-      $('#sheetTitle').textContent = '재생 목록';
-      body.innerHTML = '<div class="lrc-empty">재생 목록이 비어 있어요.<br>보이스를 길게 눌러 바로 재생하면 여기에 쌓여요.</div>';
+      $('#sheetTitle').textContent = '이어 듣기';
+      body.innerHTML = '<div class="lrc-empty">이어 듣기 목록이 비어 있어요.<br>시리즈나 라이버 전체 재생을 누르면 여기에 쌓여요.</div>';
       return;
     }
     const sel = ui.queueSel;
     $('#sheetTitle').textContent = ui.queueSelect
-      ? `재생 목록 · ${sel.size}개 선택`
-      : `재생 목록 (${q.length})`;
+      ? `이어 듣기 · ${sel.size}개 선택`
+      : `이어 듣기 (${q.length})`;
     body.innerHTML = `
       <div class="q-head">
         <span class="q-count">${q.length}곡 · 왼쪽으로 밀면 빼요</span>
@@ -3421,7 +3423,7 @@ function openQueue() {
                 <span class="hit-file">${esc([f.liver, f.year].filter(Boolean).join(' · '))}</span>
               </span>
             </button>
-            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="대기열에서 빼기"><svg><use href="#i-close"/></svg></button>`}
+            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="이어 듣기에서 빼기"><svg><use href="#i-close"/></svg></button>`}
           </div>`).join('')}
       </div>
       ${ui.queueSelect ? `
@@ -3878,7 +3880,7 @@ async function refresh(manual = false) {
     // 새로 올린 커버를 다시 찾도록 '없음' 기억을 비운다
     try {
       coverMiss().clear();
-      saveJSON(folderCoverMapKey() + '.miss', []);
+      saveJSON(folderCoverMissKey(), []);
     } catch {}
   }
   try {
@@ -3981,6 +3983,15 @@ async function onListClick(e) {
     personal.themeCompact = state.themeCompact;
     saveJSON(PERSONAL_KEY, personal);
     renderList();
+    return;
+  }
+  if (act === 'theme-liver-play') {
+    const liver = action.dataset.liver || '';
+    const list = state.files.filter((f) => (f.liver || '기타') === liver && themeOf(f).includes(state.openTheme || ''));
+    if (!list.length) { toast('재생할 보이스가 없어요.'); return; }
+    if (player.shuffle) player.setShuffle(false);
+    player.playFiles(list, 0);
+    toast(`${list.length}개를 이어서 들어요`);
     return;
   }
   if (act === 'theme-track') {

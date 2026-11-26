@@ -970,7 +970,7 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 
 .col-section { margin-bottom: 26px; }
 .col-liver {
-  display: flex; align-items: baseline; gap: 6px;
+  display: flex; align-items: center; gap: 6px;
   margin: 4px 6px 12px;
   font-size: 15.5px; font-weight: 700; letter-spacing: -.025em;
   color: var(--text);
@@ -1560,12 +1560,26 @@ body.sheet-open .player { opacity: 0; pointer-events: none; transition: opacity 
   min-width: 0;
 }
 .tcell-name {
-  display: flex; align-items: baseline; gap: 4px;
+  display: flex; align-items: center; gap: 4px;
   font-size: 11.5px; font-weight: 700; color: var(--text-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 6px;
+  margin-bottom: 6px; min-width: 0;
 }
-.tcell-name span { font-size: 10px; font-weight: 600; color: var(--faint); }
+.tcell-name .tn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcell-name .tc { flex: 0 0 auto; font-size: 10px; font-weight: 600; color: var(--faint); }
+.ttrk-play {
+  flex: 0 0 auto; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--text); color: #fff;
+}
+.ttrk-play svg { width: 10px; height: 10px; }
+.col-liver .ttrk-play { margin-right: 2px; }
+.col-liver .ttrk-play svg { width: 11px; height: 11px; }
+.col-liver .tn {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 15.5px; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .tcell-tracks { display: flex; flex-wrap: wrap; gap: 4px; }
 .ttrk {
   min-width: 26px; height: 26px; padding: 0 6px;
