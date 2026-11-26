@@ -389,9 +389,45 @@ const DEFAULT_CLIENT_ID = '933433222359-8deoeh6c8mva4sbl9bv90gunkbe600lo.apps.go
 const settings = Object.assign({ clientId: DEFAULT_CLIENT_ID, rootId: '' }, loadJSON(SETTINGS_KEY, {}));
 if (!settings.clientId) settings.clientId = DEFAULT_CLIENT_ID;
 const personal = Object.assign(
-  { nickname: '게스트', favorites: {}, playlists: [], notesSeenAt: 0, lastFileId: null, lastLiver: null },
+  { nickname: '게스트', nicknamesByEmail: {}, lastEmail: '', favorites: {}, playlists: [], notesSeenAt: 0, lastFileId: null, lastLiver: null },
   loadJSON(PERSONAL_KEY, {})
 );
+if (!personal.nicknamesByEmail || typeof personal.nicknamesByEmail !== 'object') personal.nicknamesByEmail = {};
+
+const currentUserEmail = () => String(drive?.hint || personal.lastEmail || '').trim().toLowerCase();
+
+function isMineItem(item) {
+  if (!item) return false;
+  const me = currentUserEmail();
+  if (me && item.authorEmail) return String(item.authorEmail).trim().toLowerCase() === me;
+  return !!item.author && item.author === personal.nickname;
+}
+
+function displayAuthor(item) {
+  const email = String(item?.authorEmail || '').trim().toLowerCase();
+  return (email && shared?.profileOf?.(email)?.nickname) || item?.author || '익명';
+}
+
+function syncProfileFromGoogle() {
+  const email = String(drive?.hint || '').trim().toLowerCase();
+  if (!email) return;
+  personal.lastEmail = email;
+  const remoteNick = shared?.profileOf?.(email)?.nickname || '';
+  const localNick = personal.nicknamesByEmail[email] || '';
+  let chosen = remoteNick || localNick || (personal.nickname && personal.nickname !== '게스트' ? personal.nickname : '');
+  if (!chosen) {
+    chosen = String(drive?.displayName || email.split('@')[0] || '게스트').trim().slice(0, 20);
+  }
+  if (chosen && chosen !== '게스트') {
+    personal.nickname = chosen;
+    personal.nicknamesByEmail[email] = chosen;
+    if (remoteNick !== chosen && shared?.setProfile && drive.connected) {
+      shared.setProfile(email, chosen).catch(() => {});
+    }
+  }
+  saveJSON(PERSONAL_KEY, personal);
+  renderHeader();
+}
 
 const state = {
   mode: 'live',
@@ -595,7 +631,7 @@ async function syncQuietly() {
   const before = treeSignature();
   try {
     const tree = await drive.tree(settings.rootId, { skipFolder: skipFolderFilter });
-    if (shared?.load) await shared.load();
+    if (shared?.load) { await shared.load(); syncProfileFromGoogle(); }
     lastMetaRefresh = Date.now();
     enrich(tree);
     saveTreeCache(tree);
@@ -721,7 +757,7 @@ function setFav(id, on) {
 }
 
 function isNewNote(n) {
-  return n.author !== personal.nickname && new Date(n.createdAt).getTime() > (personal.notesSeenAt || 0);
+  return !isMineItem(n) && new Date(n.createdAt).getTime() > (personal.notesSeenAt || 0);
 }
 
 function newNotesFor(id) {
@@ -2005,9 +2041,9 @@ function memoRepliesHTML(n, { own = false } = {}) {
   const replies = Array.isArray(n.replies) ? n.replies : [];
   const row = (r) => `
     <div class="memo-reply" data-reply="${esc(r.id)}">
-      <span class="mr-author">${esc(r.author)}</span>
+      <span class="mr-author">${esc(displayAuthor(r))}</span>
       <span class="mr-text">${esc(r.text)}</span>
-      ${r.author === personal.nickname && own
+      ${isMineItem(r) && own
         ? `<button type="button" class="mr-del" data-act="${own === 'np' ? 'np-del-reply' : 'memo-del-reply'}" data-id="${esc(n.id)}" data-file="${esc(n.fileId)}" data-reply="${esc(r.id)}">삭제</button>`
         : ''}
     </div>`;
@@ -2025,7 +2061,7 @@ function memoRepliesHTML(n, { own = false } = {}) {
 }
 
 function memoCardHTML(n) {
-  const mine = n.author === personal.nickname;
+  const mine = isMineItem(n);
   return `<div class="memo-card ${isNewNote(n) ? 'is-new' : ''}" data-note-card="${esc(n.id)}">
     <button type="button" class="memo-file" data-act="memo-jump" data-id="${esc(n.fileId)}" data-t="${n.t ?? ''}">
       <span class="mf-name">${esc(displayName(n.file?.name || n.fileId))}</span>
@@ -2054,18 +2090,26 @@ function renderNotes() {
     return;
   }
 
-  // 작성자별로 묶는다 — 내 메모가 먼저, 그다음 최근에 쓴 사람 순
+  // 작성자(구글 아이디 우선, 없으면 닉네임)별로 묶는다 — 내 메모가 먼저, 그다음 최근에 쓴 사람 순
   const byAuthor = new Map();
+  const labelOf = new Map();
+  const mineOf = new Map();
   for (const n of rows) {
-    const a = n.author || '익명';
-    if (!byAuthor.has(a)) byAuthor.set(a, []);
-    byAuthor.get(a).push(n);
+    const key = (n.authorEmail ? `e:${n.authorEmail.toLowerCase()}` : `n:${n.author || '익명'}`);
+    if (!byAuthor.has(key)) {
+      byAuthor.set(key, []);
+      labelOf.set(key, displayAuthor(n));
+      mineOf.set(key, isMineItem(n));
+    } else if (isMineItem(n)) {
+      mineOf.set(key, true);
+    }
+    byAuthor.get(key).push(n);
   }
   const latest = (list) => Math.max(...list.map((n) => new Date(n.createdAt).getTime() || 0));
   const authors = [...byAuthor.keys()].sort((a, b) => {
-    const me = a === personal.nickname, m2 = b === personal.nickname;
+    const me = mineOf.get(a), m2 = mineOf.get(b);
     if (me !== m2) return me ? -1 : 1;
-    return latest(byAuthor.get(b)) - latest(byAuthor.get(a)) || a.localeCompare(b, 'ko');
+    return latest(byAuthor.get(b)) - latest(byAuthor.get(a)) || labelOf.get(a).localeCompare(labelOf.get(b), 'ko');
   });
 
   const head = `<div class="listhead">
@@ -2073,9 +2117,10 @@ function renderNotes() {
       ${newN ? '<button class="mini has-content" data-act="mark-seen">모두 읽음</button>' : ''}
     </div>`;
 
-  const sections = authors.map((a) => {
-    const list = byAuthor.get(a);
-    const mine = a === personal.nickname;
+  const sections = authors.map((key) => {
+    const list = byAuthor.get(key);
+    const a = labelOf.get(key);
+    const mine = mineOf.get(key);
     return `<section class="memo-group">
       <h3 class="col-liver">${esc(a)}${mine ? ' (나)' : ''}<span>${list.length}</span></h3>
       ${list.map(memoCardHTML).join('')}
@@ -2900,20 +2945,27 @@ async function connectFromUI() {
 /* nickname */
 function openNickname() {
   ui.sheet = 'nick';
+  const email = currentUserEmail();
   const body = openSheet('닉네임', `
-    <p class="note">메모에 표시될 이름이에요. 이 기기에만 저장돼요.</p>
+    <p class="note">${email ? `현재 구글 계정(<b>${esc(email)}</b>)에 맞춰 저장돼요. 다시 로그인해도 그대로 유지됩니다.` : '메모에 표시될 이름이에요. 구글 드라이브를 연결하면 계정별로 계속 기억해요.'}</p>
     <div class="field">
       <label>닉네임</label>
       <input type="text" id="nickInput" maxlength="20" value="${esc(personal.nickname === '게스트' ? '' : personal.nickname)}" placeholder="예: 쭈" />
-      <p class="hint">바꾸면 앞으로 남기는 메모의 작성자 이름이 됩니다. (이미 남긴 메모는 그대로예요)</p>
+      <p class="hint">메모와 답글은 구글 계정을 기준으로 내 글이 구분됩니다.</p>
     </div>
     <button class="btn-primary" data-act="save-nick">저장</button>
   `);
   setTimeout(() => $('#nickInput')?.focus(), 80);
-  body.addEventListener('click', (e) => {
+  body.addEventListener('click', async (e) => {
     if (!e.target.closest('[data-act="save-nick"]')) return;
     const v = ($('#nickInput')?.value || '').trim() || '게스트';
     personal.nickname = v.slice(0, 20);
+    if (email && personal.nickname !== '게스트') {
+      personal.nicknamesByEmail[email] = personal.nickname;
+      if (shared?.setProfile && drive.connected) {
+        shared.setProfile(email, personal.nickname).catch(() => {});
+      }
+    }
     saveJSON(PERSONAL_KEY, personal);
     renderHeader();
     renderList();
@@ -3005,8 +3057,8 @@ function openMemoSheet(file) {
             <button class="memo-time" data-act="jump" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
             <div class="memo-body">
               <div class="memo-text">${esc(n.text)}</div>
-              <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
-                ${n.author === personal.nickname ? '<button class="memo-del" data-act="del" data-file="' + esc(file.id) + '" data-id="' + esc(n.id) + '">삭제</button>' : ''}
+              <div class="memo-meta">${esc(displayAuthor(n))} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
+                ${isMineItem(n) ? '<button class="memo-del" data-act="del" data-file="' + esc(file.id) + '" data-id="' + esc(n.id) + '">삭제</button>' : ''}
               </div>
             </div>
           </div>
@@ -3031,7 +3083,7 @@ function openMemoSheet(file) {
       if (stamp > 0 && player?.current?.id !== file.id) {
         // keep the stamped time only for the playing file
       }
-      await shared.addNote(file.id, { author: personal.nickname, text, t: stamp });
+      await shared.addNote(file.id, { author: personal.nickname, authorEmail: currentUserEmail(), text, t: stamp });
       toast('메모를 남겼어요');
       renderList();
       openMemoSheet(file);
@@ -3041,7 +3093,7 @@ function openMemoSheet(file) {
       closeSheet();
     }
     if (act === 'del') {
-      try { await shared.removeNote(file.id, b.dataset.id, { by: personal.nickname }); toast('메모를 지웠어요'); }
+      try { await shared.removeNote(file.id, b.dataset.id, { by: personal.nickname, byEmail: currentUserEmail() }); toast('메모를 지웠어요'); }
       catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
       renderList();
       openMemoSheet(file);
@@ -3174,8 +3226,8 @@ function npMemoHTML(file) {
             <button type="button" class="memo-time" data-act="np-seek" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
             <div class="memo-body">
               <div class="memo-text">${esc(n.text)}</div>
-              <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
-                ${n.author === personal.nickname ? `<button type="button" class="memo-del" data-act="np-del" data-id="${esc(n.id)}">삭제</button>` : ''}
+              <div class="memo-meta">${esc(displayAuthor(n))} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
+                ${isMineItem(n) ? `<button type="button" class="memo-del" data-act="np-del" data-id="${esc(n.id)}">삭제</button>` : ''}
               </div>
             </div>
           </div>
@@ -3519,7 +3571,7 @@ function openNowPlaying() {
       if (!text) { toast('메모 내용을 입력해 주세요.', { err: true }); return; }
       const stampEl = body.querySelector('[data-act="np-stamp"]');
       const t = stampEl ? Number(stampEl.dataset.t || 0) : 0;
-      await shared.addNote(file.id, { author: personal.nickname, text, t });
+      await shared.addNote(file.id, { author: personal.nickname, authorEmail: currentUserEmail(), text, t });
       toast('메모를 남겼어요');
       renderList();
       renderTabs();
@@ -3527,7 +3579,7 @@ function openNowPlaying() {
       return;
     }
     if (act === 'np-del') {
-      try { await shared.removeNote(file.id, b.dataset.id, { by: personal.nickname }); toast('메모를 지웠어요'); }
+      try { await shared.removeNote(file.id, b.dataset.id, { by: personal.nickname, byEmail: currentUserEmail() }); toast('메모를 지웠어요'); }
       catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
       renderList();
       renderNowPanel(file, 'memo');
@@ -4160,6 +4212,7 @@ async function refreshMetaOnly() {
   if (!drive.connected) return;
   try {
     await shared.load();
+    syncProfileFromGoogle();
     lastMetaRefresh = Date.now();
     saveMetaCache(shared?.data);
     renderList();
@@ -4183,6 +4236,7 @@ async function refresh(manual = false) {
       onProgress: ({ done }) => setConnText(`불러오는 중… (${done})`),
     });
     await shared.load();
+    syncProfileFromGoogle();
     lastMetaRefresh = Date.now();
     enrich(tree);
     saveTreeCache(tree);
@@ -4446,7 +4500,7 @@ async function onListClick(e) {
     const inp = scope?.querySelector('input');
     const text = (inp?.value || '').trim();
     if (!text) { toast('답글 내용을 입력해 주세요.', { err: true }); return; }
-    await shared.addReply(fileId, noteId, { author: personal.nickname, text });
+    await shared.addReply(fileId, noteId, { author: personal.nickname, authorEmail: currentUserEmail(), text });
     toast('답글을 남겼어요');
     renderTabs();
     if (act === 'np-add-reply' && ui.sheetFile) renderNowPanel(fileById(ui.sheetFile), 'memo');
@@ -4455,7 +4509,7 @@ async function onListClick(e) {
   }
   if (act === 'memo-del-reply' || act === 'np-del-reply') {
     try {
-      await shared.removeReply(action.dataset.file, action.dataset.id, action.dataset.reply, { by: personal.nickname });
+      await shared.removeReply(action.dataset.file, action.dataset.id, action.dataset.reply, { by: personal.nickname, byEmail: currentUserEmail() });
       toast('답글을 지웠어요');
     } catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
     renderTabs();

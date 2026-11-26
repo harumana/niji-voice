@@ -66,6 +66,7 @@ export class Drive {
     this.token = '';
     this.expiresAt = 0;
     this.hint = '';
+    this.displayName = '';
     this.tokenClient = null;
     this.gisLoading = null;
     this.pending = null;
@@ -80,6 +81,7 @@ export class Drive {
         token: this.token,
         expiresAt: this.expiresAt,
         hint: this.hint || '',
+        displayName: this.displayName || '',
       }));
     } catch {}
   }
@@ -90,6 +92,7 @@ export class Drive {
       const res = await this.raw(`${API}/about?${qs({ fields: 'user(emailAddress,displayName)' })}`);
       const json = await res.json();
       this.hint = json?.user?.emailAddress || '';
+      this.displayName = json?.user?.displayName || '';
       if (this.hint) this._persistToken();
     } catch {}
     return this.hint;
@@ -444,7 +447,7 @@ export class Drive {
 export const META_NAME = '_niji_voice_meta.json';
 
 function emptyMeta() {
-  return { version: 1, updatedAt: '', tags: {}, notes: {}, durations: {}, transcripts: {} };
+  return { version: 1, updatedAt: '', tags: {}, notes: {}, durations: {}, transcripts: {}, profiles: {} };
 }
 
 function noteId(n) {
@@ -467,13 +470,26 @@ export function normalizeMeta(raw) {
     if (raw.notes && typeof raw.notes === 'object') {
       for (const [k, v] of Object.entries(raw.notes)) {
         if (!Array.isArray(v)) continue;
-        m.notes[k] = v.filter((n) => n && typeof n.text === 'string').map((n) => ({
-          id: noteId(n),
-          author: String(n.author || '익명').slice(0, 30),
-          text: String(n.text || '').slice(0, 500),
-          t: typeof n.t === 'number' ? n.t : (typeof n.timestampSeconds === 'number' ? n.timestampSeconds : null),
-          createdAt: n.createdAt || new Date(0).toISOString(),
-        }));
+        m.notes[k] = v.filter((n) => n && typeof n.text === 'string').map((n) => {
+          const item = {
+            id: noteId(n),
+            author: String(n.author || '익명').slice(0, 30),
+            authorEmail: n.authorEmail ? String(n.authorEmail).trim().toLowerCase().slice(0, 120) : '',
+            text: String(n.text || '').slice(0, 500),
+            t: typeof n.t === 'number' ? n.t : (typeof n.timestampSeconds === 'number' ? n.timestampSeconds : null),
+            createdAt: n.createdAt || new Date(0).toISOString(),
+          };
+          if (Array.isArray(n.replies) && n.replies.length) {
+            item.replies = n.replies.filter((r) => r && typeof r.text === 'string').map((r) => ({
+              id: r.id || ('r_' + Math.abs(hash(`${r.author}|${r.createdAt}|${r.text}`)).toString(36)),
+              author: String(r.author || '익명').slice(0, 30),
+              authorEmail: r.authorEmail ? String(r.authorEmail).trim().toLowerCase().slice(0, 120) : '',
+              text: String(r.text || '').slice(0, 500),
+              createdAt: r.createdAt || new Date(0).toISOString(),
+            }));
+          }
+          return item;
+        });
       }
     }
     if (raw.durations && typeof raw.durations === 'object') {
@@ -487,6 +503,16 @@ export function normalizeMeta(raw) {
           translated: String(v.translated || '').slice(0, 20000),
           source: v.source || 'manual',
           author: String(v.author || '').slice(0, 30),
+          updatedAt: v.updatedAt || new Date(0).toISOString(),
+        };
+      }
+    }
+    if (raw.profiles && typeof raw.profiles === 'object') {
+      for (const [k, v] of Object.entries(raw.profiles)) {
+        const email = String(k || '').trim().toLowerCase();
+        if (!email || !v || typeof v !== 'object' || !v.nickname) continue;
+        m.profiles[email] = {
+          nickname: String(v.nickname).slice(0, 20),
           updatedAt: v.updatedAt || new Date(0).toISOString(),
         };
       }
@@ -567,6 +593,13 @@ export class SharedMeta {
       if (merged.length) out.notes[fileId] = merged; else delete out.notes[fileId];
     }
 
+    for (const [email, p] of Object.entries(local.profiles || {})) {
+      const prev = out.profiles[email];
+      if (!prev || String(p.updatedAt || '').localeCompare(String(prev.updatedAt || '')) >= 0) {
+        out.profiles[email] = p;
+      }
+    }
+
     for (const [fileId, v] of Object.entries(local.transcripts)) {
       const r = out.transcripts[fileId];
       if (!r || String(v.updatedAt) >= String(r.updatedAt)) out.transcripts[fileId] = v;
@@ -635,12 +668,30 @@ export class SharedMeta {
     });
   }
 
+  profileOf(email) {
+    const e = String(email || '').trim().toLowerCase();
+    return e ? (this.data.profiles?.[e] || null) : null;
+  }
+
+  async setProfile(email, nickname) {
+    const e = String(email || '').trim().toLowerCase();
+    const nick = String(nickname || '').trim().slice(0, 20);
+    if (!e || !nick) return null;
+    const prof = { nickname: nick, updatedAt: new Date().toISOString() };
+    await this.commit((d) => {
+      if (!d.profiles) d.profiles = {};
+      d.profiles[e] = prof;
+    });
+    return prof;
+  }
+
   notesOf(fileId) { return (this.data.notes[fileId] || []).slice().sort((a, b) => (a.t ?? 0) - (b.t ?? 0)); }
 
-  async addNote(fileId, { author, text, t }) {
+  async addNote(fileId, { author, authorEmail = '', text, t }) {
     const note = {
       id: 'n_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       author: String(author || '익명').slice(0, 30),
+      authorEmail: String(authorEmail || '').trim().toLowerCase().slice(0, 120),
       text: String(text || '').slice(0, 500),
       t: Number.isFinite(t) ? Math.round(t * 10) / 10 : null,
       createdAt: new Date().toISOString(),
@@ -651,11 +702,13 @@ export class SharedMeta {
     return note;
   }
 
-  /** 메모는 쓴 사람만 지운다 — 남의 메모는 답글만 달 수 있다 */
-  async removeNote(fileId, noteIdValue, { by = '' } = {}) {
+  /** 메모는 쓴 사람만 지운다 — 구글 아이디(이메일) 우선, 없으면 닉네임으로 확인 */
+  async removeNote(fileId, noteIdValue, { by = '', byEmail = '' } = {}) {
     const note = (this.data.notes[fileId] || []).find((n) => n.id === noteIdValue);
     if (!note) return false;
-    if (by && note.author !== by) { const err = new Error('남이 남긴 메모는 지울 수 없어요'); err.code = 'not_owner'; throw err; }
+    const e = String(byEmail || '').trim().toLowerCase();
+    const ownerOk = (e && note.authorEmail) ? (note.authorEmail.toLowerCase() === e) : (!by || note.author === by);
+    if (!ownerOk) { const err = new Error('남이 남긴 메모는 지울 수 없어요'); err.code = 'not_owner'; throw err; }
     this.removedNotes.add(noteIdValue);
     await this.commit((d) => {
       d.notes[fileId] = (d.notes[fileId] || []).filter((n) => n.id !== noteIdValue);
@@ -665,12 +718,13 @@ export class SharedMeta {
   }
 
   /** 메모에 답글 달기 — 답글에는 타임스탬프가 없다 */
-  async addReply(fileId, noteIdValue, { author, text }) {
+  async addReply(fileId, noteIdValue, { author, authorEmail = '', text }) {
     const t = String(text || '').trim().slice(0, 500);
     if (!t) return null;
     const reply = {
       id: 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       author: String(author || '익명').slice(0, 30),
+      authorEmail: String(authorEmail || '').trim().toLowerCase().slice(0, 120),
       text: t,
       createdAt: new Date().toISOString(),
     };
@@ -683,11 +737,13 @@ export class SharedMeta {
   }
 
   /** 답글은 쓴 사람만 지운다 */
-  async removeReply(fileId, noteIdValue, replyIdValue, { by = '' } = {}) {
+  async removeReply(fileId, noteIdValue, replyIdValue, { by = '', byEmail = '' } = {}) {
     const note = (this.data.notes[fileId] || []).find((n) => n.id === noteIdValue);
     const reply = (note?.replies || []).find((r) => r.id === replyIdValue);
     if (!note || !reply) return false;
-    if (by && reply.author !== by) { const err = new Error('남이 남긴 답글은 지울 수 없어요'); err.code = 'not_owner'; throw err; }
+    const e = String(byEmail || '').trim().toLowerCase();
+    const ownerOk = (e && reply.authorEmail) ? (reply.authorEmail.toLowerCase() === e) : (!by || reply.author === by);
+    if (!ownerOk) { const err = new Error('남이 남긴 답글은 지울 수 없어요'); err.code = 'not_owner'; throw err; }
     await this.commit((d) => {
       const n = (d.notes[fileId] || []).find((x) => x.id === noteIdValue);
       if (!n) return;
