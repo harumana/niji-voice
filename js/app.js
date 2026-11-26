@@ -202,6 +202,19 @@ function coverMap() {
   if (!folderCoverMap) folderCoverMap = new Map(Object.entries(loadJSON(folderCoverMapKey(), {})));
   return folderCoverMap;
 }
+let folderCoverMiss = null;
+function coverMiss() {
+  if (!folderCoverMiss) folderCoverMiss = new Set(loadJSON(folderCoverMapKey() + '.miss', []));
+  return folderCoverMiss;
+}
+function rememberFolderMiss(folderId) {
+  if (!folderId) return;
+  const m = coverMiss();
+  if (m.has(folderId)) return;
+  m.add(folderId);
+  try { saveJSON(folderCoverMapKey() + '.miss', [...m].slice(-4000)); } catch {}
+}
+
 function rememberFolderCover(folderId, imageId) {
   if (!folderId || !imageId) return;
   const m = coverMap();
@@ -960,6 +973,11 @@ function emptyHTML({ icon = '🎧', title, desc, actions = '' }) {
 }
 
 function renderList() {
+  renderListInner();
+  queueVisibleCovers();
+}
+
+function renderListInner() {
   rebuildTrackNos(state.files);
   const area = $('#listArea');
   const foot = $('#listFoot');
@@ -1170,24 +1188,18 @@ function queueCover(fileId) {
   const file = fileById(fileId);
   if (!file) return;
   const hasFolderCover = !!(file.folderCoverId || (file.parentId && coverMap().has(file.parentId)));
-  if (!drive.connected && !hasFolderCover) return;
+  const canAskFolder = drive.connected && !!file.parentId && !coverMiss().has(file.parentId);
+  // 폴더도 못 물어보고 아는 커버도 없으면 할 수 있는 게 없다
+  if (!canAskFolder && !hasFolderCover) return;
   const key = seriesKeyOf(file);
   if (seriesCover.has(key)) { paintSeries(key); return; }
-  const ownFile = fileById(fileId);
-  if (ownFile?.folderCoverId) {
-    if (seriesPending.has(key) || coverQueue.includes(key)) return;
-    coverQueue.push(key);
-    coverRep.set(key, fileId);
-    pumpCovers();
-    return;
-  }
   const own = parsedCache.get(fileId);
   if (own?.thumb || own?.coverUrl) {
     rememberSeriesCover(file, { thumb: own.thumb || own.coverUrl, full: own.coverUrl || own.thumb });
     paintSeries(key);
     return;
   }
-  if (cachedEmpty.has(fileId)) return;
+  // mp3에 아트가 없다고 기록돼 있어도 폴더 커버는 따로 시도한다
   if (seriesPending.has(key) || coverQueue.includes(key)) return;
   coverQueue.push(key);
   coverRep.set(key, fileId);
@@ -1200,13 +1212,22 @@ const coverBlobPending = new Map(); // drive image id -> promise
 
 async function folderCoverInfo(file) {
   let id = file?.folderCoverId || (file?.parentId ? coverMap().get(file.parentId) : null);
+  if (!id && file?.parentId && coverMiss().has(file.parentId)) return null;
   if (!id && file?.parentId) {
     // 처음 보는 폴더만 조회한다 — 찾은 id는 저장해 두고 다음부터는 조회하지 않는다
-    const img = await drive.folderImage(file.parentId).catch(() => null);
+    let img = null;
+    let asked = false;
+    try {
+      img = await drive.folderImage(file.parentId);
+      asked = true;                        // 조회 자체는 성공했다
+    } catch {}
     if (img) {
       id = img.id;
       file.folderCoverId = img.id;
       rememberFolderCover(file.parentId, img.id);
+    } else if (asked) {
+      // 폴더에 이미지가 없다 — 다음부터는 묻지 않는다 (오류였을 때는 기억하지 않는다)
+      rememberFolderMiss(file.parentId);
     }
   }
   if (id && file) file.folderCoverId = id;
@@ -1243,7 +1264,6 @@ function pumpCovers() {
     const file = fileById(coverRep.get(key));
     if (!file) continue;
     if (seriesCover.has(key)) { paintSeries(key); continue; }
-    if (cachedEmpty.has(file.id)) continue;
     coverActive += 1;
     seriesPending.add(key);
     folderCoverInfo(file)
@@ -1253,7 +1273,8 @@ function pumpCovers() {
           paintSeries(key);
           return;
         }
-        // no cover image in the folder — fall back to the art inside the mp3
+        // 폴더에 커버가 없다 — mp3 안의 아트로 넘어간다 (이미 없다고 아는 파일은 건너뛴다)
+        if (cachedEmpty.has(file.id)) return;
         const p = await loadParsed(file).catch(() => null);
         const info = p && (p.thumb || p.coverUrl)
           ? { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb }
@@ -1562,15 +1583,23 @@ function renderCollection() {
   area.innerHTML = folderModeBar('collection', totalFiles) + axisBar() + favLiverStrip(cur) + head + favBlock + sections;
   $('#listFoot').textContent = '';
   prefetchSeriesCovers(flat);
+  queueVisibleCovers();
+  watchCovers();
 }
 
 /** warm the covers of the series on screen, five at a time */
 function prefetchSeriesCovers(groups) {
-  if (state.mode !== 'live' || !drive.connected) return;
-  for (const group of groups.slice(0, 18)) {
+  if (state.mode !== 'live') return;
+  for (const group of groups) {
     const file = group.files.find((f) => !coverInfoFor(f)) || group.files[0];
     if (file) queueCover(file.id);
   }
+}
+
+/** 목록이 그려진 직후 화면에 있는 커버를 옵저버 없이도 바로 대기열에 넣는다 */
+function queueVisibleCovers(limit = 60) {
+  const els = $$('#listArea [data-cover]:not([data-painted])').slice(0, limit);
+  for (const el of els) queueCover(el.dataset.cover);
 }
 
 function renderSeriesDetail(groups) {
@@ -2380,7 +2409,7 @@ function openSettings() {
     <div class="field">
       <label>목록 새로고침</label>
       <label class="switchrow">
-        <input type="checkbox" id="setAutoSync" ${personal.autoSync ? 'checked' : ''} />
+        <input type="checkbox" id="setAutoSync" ${personal.autoSync ? 'checked' : ''} data-instant="1" />
         <span>실행할 때 자동으로 새로 받기</span>
       </label>
       <p class="hint">꺼 두면 저장해 둔 목록을 그대로 써요. 위 새로고침 버튼을 누를 때만 드라이브를 다시 읽습니다.</p>
@@ -2459,6 +2488,14 @@ function openSettings() {
     const el = $('#offlineUsage');
     if (el) el.textContent = `${u.count}개${u.bytes ? ` · ${fmtBytes(u.bytes)}` : ''}`;
   }).catch(() => {});
+
+  body.addEventListener('change', (e) => {
+    // 목록 새로고침 스위치는 누르는 즉시 저장한다 — 저장 버튼을 안 눌러 되돌아가던 문제
+    if (e.target.id !== 'setAutoSync') return;
+    personal.autoSync = !!e.target.checked;
+    saveJSON(PERSONAL_KEY, personal);
+    toast(personal.autoSync ? '실행할 때 목록을 새로 받아요' : '저장해 둔 목록을 그대로 써요');
+  });
 
   body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
@@ -3835,6 +3872,13 @@ async function refreshMetaOnly() {
 async function refresh(manual = false) {
   state.loading = true;
   renderHeader();
+  if (manual) {
+    // 새로 올린 커버를 다시 찾도록 '없음' 기억을 비운다
+    try {
+      coverMiss().clear();
+      saveJSON(folderCoverMapKey() + '.miss', []);
+    } catch {}
+  }
   try {
     const tree = await drive.tree(settings.rootId, {
       skipFolder: skipFolderFilter,
