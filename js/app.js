@@ -98,8 +98,24 @@ function displayTitleOf(f) {
 
   if (series && normTxt(src).includes(normTxt(series))) {
     const base = liverShort ? `${liverShort} - ${series}` : series;
+    const liverRe = liverShort
+      ? new RegExp(liverShort.split('').map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*'), 'gi')
+      : null;
+    let rest = src;
+    if (liverRe) rest = rest.replace(liverRe, ' ');
+    const hadSeries = rest.indexOf(series) >= 0;
+    if (hadSeries) rest = rest.split(series).join(' ');
+    rest = rest
+      .replace(/ex[\s_-]*another/gi, ' ')
+      .replace(/(^|[^a-z0-9])ex([^a-z0-9]|$)/gi, ' ')
+      .replace(/[()\[\]]/g, ' ')
+      .replace(/[_.]/g, ' ')
+      .replace(/^\s*\d{1,3}[\s._-]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!hadSeries) rest = part;
     const bits = [];
-    if (part && !normTxt(series).includes(normTxt(part))) bits.push(part);
+    if (rest) bits.push(rest);
     if (ex) bits.push(ex);
     return bits.length ? `${base} (${bits.join(', ')})` : base;
   }
