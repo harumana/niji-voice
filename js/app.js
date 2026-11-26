@@ -3883,6 +3883,8 @@ function bindEvents() {
   });
 
   $('#listArea').addEventListener('click', onListClick);
+  // 라이버별·테마별 토글은 목록 밖(상단 줄)에 있어 따로 연결한다
+  $('#axisSlot')?.addEventListener('click', onListClick);
   $('#selBar').addEventListener('click', onSelAction);
 
   /* player */
