@@ -1949,9 +1949,9 @@ async function boot() {
   }
 
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
-    });
+    const registerSw = () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); };
+    if (document.readyState === 'complete') registerSw();
+    else window.addEventListener('load', registerSw, { once: true });
   }
   window.__appReady = true;
 }
