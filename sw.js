@@ -1,5 +1,5 @@
 /* NIJI VOICE service worker — app shell offline, network-first updates */
-const CACHE = 'niji-voice-v33';
+const CACHE = 'niji-voice-v34';
 const SHELL = [
   './',
   './index.html',
@@ -8,7 +8,6 @@ const SHELL = [
   './js/drive.js',
   './js/id3.js',
   './js/player.js',
-  './js/demo.js',
   './js/db.js',
   './manifest.webmanifest',
   './icons/icon.svg',

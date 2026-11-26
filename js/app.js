@@ -5,7 +5,6 @@ import { Drive, SharedMeta, NeedsAuth, META_NAME } from './drive.js';
 import { parseId3 } from './id3.js';
 import { Player, fmtTime } from './player.js';
 import * as db from './db.js';
-import { DEMO_TREE, demoAudioUrl, demoParsed, demoMeta } from './demo.js';
 
 /* ─────────────────────────── helpers ─────────────────────────── */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -13,7 +12,6 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SETTINGS_KEY = 'niji.settings';
 const PERSONAL_KEY = 'niji.personal';
-const DEMO_META_KEY = 'niji.demo.meta';
 
 function toast(msg, { err = false, ms = 2400 } = {}) {
   const host = $('#toasts');
@@ -160,8 +158,7 @@ function coverInfoFor(f) {
   if (p?.thumb || p?.coverUrl) return { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb };
   const s = seriesCover.get(seriesKeyOf(f));
   if (s) return s;
-  // the cover.png sitting in the same Drive folder as the voice
-  return f.folderCover ? { thumb: f.folderCover, full: f.folderCover } : null;
+  return null;
 }
 
 function rememberSeriesCover(f, info) {
@@ -242,6 +239,7 @@ function saveTreeCache(tree) {
         createdTime: f.createdTime, modifiedTime: f.modifiedTime,
         parentId: f.parentId, driveId: f.driveId || null,
         folderCover: f.folderCover || null,
+        folderCoverId: f.folderCoverId || null,
       })),
     }));
   } catch {}
@@ -250,7 +248,7 @@ function saveTreeCache(tree) {
 /** a cache written before folder covers existed — re-list so covers appear */
 function cacheMissingCovers(data) {
   return Array.isArray(data?.files) && data.files.length > 0
-    && data.files.some((f) => !Object.prototype.hasOwnProperty.call(f, 'folderCover'));
+    && data.files.some((f) => !Object.prototype.hasOwnProperty.call(f, 'folderCoverId'));
 }
 
 function loadTreeCache(rootId) {
@@ -317,9 +315,9 @@ const personal = Object.assign(
 );
 
 const state = {
-  mode: 'demo',
+  mode: 'live',
   loading: false,
-  rootId: 'demo-root',
+  rootId: null,
   files: [],
   folders: [],
   folderMap: new Map(),
@@ -354,61 +352,6 @@ const parsedCache = new Map();   // fileId -> {title, artist, album, year, lyric
 const offlineIds = new Set();
 let player = null;
 
-/* demo metadata behaves like SharedMeta but stays in localStorage */
-class LocalMeta {
-  constructor(data) { this.data = data; }
-  onChange() { return () => {}; }
-  save() { saveJSON(DEMO_META_KEY, this.data); }
-  tagsOf(id) { return this.data.tags[id] || []; }
-  notesOf(id) { return (this.data.notes[id] || []).slice().sort((a, b) => (a.t ?? 0) - (b.t ?? 0)); }
-  async addTags(ids, tag) {
-    const t = String(tag || '').trim();
-    if (!t) return;
-    for (const id of ids) {
-      const set = new Set(this.data.tags[id] || []);
-      set.add(t);
-      this.data.tags[id] = [...set];
-    }
-    this.save();
-  }
-  async removeTag(id, tag) {
-    this.data.tags[id] = (this.data.tags[id] || []).filter((x) => x !== tag);
-    if (!this.data.tags[id].length) delete this.data.tags[id];
-    this.save();
-  }
-  async addNote(fileId, n) {
-    const note = {
-      id: 'n_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      author: n.author || '익명',
-      text: n.text,
-      t: n.t ?? null,
-      createdAt: new Date().toISOString(),
-    };
-    this.data.notes[fileId] = [...(this.data.notes[fileId] || []), note];
-    this.save();
-    return note;
-  }
-  async removeNote(fileId, id) {
-    this.data.notes[fileId] = (this.data.notes[fileId] || []).filter((n) => n.id !== id);
-    if (!this.data.notes[fileId].length) delete this.data.notes[fileId];
-    this.save();
-  }
-  setDuration(id, s) {
-    const v = Math.round(s);
-    if (!v || this.data.durations[id] === v) return;
-    this.data.durations[id] = v;
-    this.save();
-  }
-  setTranscript(id, t) {
-    this.data.transcripts[id] = { ...t, source: 'manual', updatedAt: new Date().toISOString() };
-    this.save();
-  }
-  allNotes() {
-    const out = [];
-    for (const [fileId, notes] of Object.entries(this.data.notes)) for (const n of notes) out.push({ ...n, fileId });
-    return out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  }
-}
 
 /* ─────────────────────────── data loading ─────────────────────────── */
 function enrich(tree) {
@@ -439,14 +382,15 @@ function enrich(tree) {
   }
 }
 
-function useDemo() {
-  state.mode = 'demo';
-  state.liveError = '';
-  const saved = loadJSON(DEMO_META_KEY, null);
-  shared = new LocalMeta(saved || demoMeta());
-  enrich(DEMO_TREE);
-  state.folderId = 'demo-root';
-  for (const f of state.files) parsedCache.set(f.id, { ...demoParsed(f), demo: true });
+/** no library yet: an empty library plus the connect prompt */
+function showDisconnected() {
+  state.mode = 'live';
+  state.files = [];
+  state.folders = [];
+  state.folderMap = new Map();
+  state.folderId = null;
+  state.openSeries = null;
+  shared = new SharedMeta(drive, settings.rootId || '');
   renderAll();
 }
 
@@ -495,7 +439,6 @@ async function loadLive({ interactive = false, silent = false } = {}) {
     saveTreeCache(tree);
     saveMetaCache(meta.data);
     state.folderId = tree.root.id;
-    for (const f of DEMO_TREE.files) parsedCache.delete(f.id);
     await refreshOfflineIds();
     await primeCache();
     renderAll();
@@ -503,7 +446,7 @@ async function loadLive({ interactive = false, silent = false } = {}) {
     if (!silent) toast(`${state.files.length}개 파일을 불러왔어요`);
     return true;
   } catch (e) {
-    state.mode = state.files.length ? state.mode : 'demo';
+    state.mode = 'live';
     if (e instanceof NeedsAuth) {
       state.liveError = 'auth';
       if (interactive) showConnectError(e);
@@ -906,17 +849,10 @@ function renderList() {
     files = visibleFiles();
     if (!files.length) {
       if (!state.files.length) {
-        area.innerHTML = state.mode === 'live'
-          ? emptyHTML({
+        area.innerHTML = emptyHTML({
             icon: '📂', title: '이 폴더에는 오디오 파일이 없어요',
             desc: '연결된 폴더에 mp3 파일이 있는지 확인해 주세요.<br>폴더 ID가 다르면 설정에서 바꿀 수 있어요.',
-            actions: '<button class="btn-line primary" data-act="connect">폴더 설정 열기</button>',
-          })
-          : emptyHTML({
-            icon: '🔌', title: 'Google 드라이브를 연결해 주세요',
-            desc: '지금은 데모 모드예요. 설정에서 OAuth Client ID를 넣고 연결하면<br>NIJISANJI 공유 드라이브의 NIJI VOICE 폴더를 불러옵니다.',
-            actions: `<button class="btn-line primary" data-act="connect">Google 계정 연결</button>
-                      <button class="btn-line" data-act="demo">데모 보기</button>`,
+            actions: `<button class="btn-line primary" data-act="connect">Google 계정 연결</button>`,
           });
       } else {
         area.innerHTML = emptyHTML({
@@ -935,7 +871,7 @@ function renderList() {
     `${files.length}개 파일${summary ? ` · ${esc(summary)}` : ''} · ${sortLabel}`,
     `<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button>`
   ) + files.map((f) => cardHTML(f)).join('');
-  foot.textContent = state.mode === 'demo' ? '데모 모드 — 실제 드라이브는 설정에서 연결할 수 있어요.' : '';
+  foot.textContent = '';
 }
 
 function renderPlaylists() {
@@ -1031,6 +967,14 @@ function queueCover(fileId) {
   if (!file) return;
   const key = seriesKeyOf(file);
   if (seriesCover.has(key)) { paintSeries(key); return; }
+  const ownFile = fileById(fileId);
+  if (ownFile?.folderCoverId) {
+    if (seriesPending.has(key) || coverQueue.includes(key)) return;
+    coverQueue.push(key);
+    coverRep.set(key, fileId);
+    pumpCovers();
+    return;
+  }
   const own = parsedCache.get(fileId);
   if (own?.thumb || own?.coverUrl) {
     rememberSeriesCover(file, { thumb: own.thumb || own.coverUrl, full: own.coverUrl || own.thumb });
@@ -1044,6 +988,40 @@ function queueCover(fileId) {
   pumpCovers();
 }
 
+/* the cover.png in a series folder, downloaded once and kept in IndexedDB */
+const coverBlobs = new Map();       // drive image id -> object url
+const coverBlobPending = new Map(); // drive image id -> promise
+
+async function folderCoverInfo(file) {
+  const id = file?.folderCoverId;
+  if (!id) return null;
+  if (coverBlobs.has(id)) return { thumb: coverBlobs.get(id), full: coverBlobs.get(id) };
+  if (coverBlobPending.has(id)) return coverBlobPending.get(id);
+  const job = (async () => {
+    const saved = await db.get('covers', id).catch(() => null);
+    if (saved?.blob) {
+      const url = URL.createObjectURL(saved.blob);
+      coverBlobs.set(id, url);
+      return { thumb: url, full: url };
+    }
+    const url = await drive.mediaBlobUrl(id);
+    coverBlobs.set(id, url);
+    try {
+      const blob = await (await fetch(url)).blob();
+      await db.put('covers', id, { blob });
+    } catch {}
+    return { thumb: url, full: url };
+  })();
+  coverBlobPending.set(id, job);
+  try {
+    return await job;
+  } catch {
+    return null;
+  } finally {
+    coverBlobPending.delete(id);
+  }
+}
+
 function pumpCovers() {
   while (coverActive < 5 && coverQueue.length) {
     const key = coverQueue.shift();
@@ -1053,10 +1031,18 @@ function pumpCovers() {
     if (cachedEmpty.has(file.id)) continue;
     coverActive += 1;
     seriesPending.add(key);
-    loadParsed(file)
-      .then((p) => {
-        if (!p) return;
-        const info = p.thumb || p.coverUrl ? { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb } : null;
+    folderCoverInfo(file)
+      .then(async (folderCov) => {
+        if (folderCov) {
+          rememberSeriesCover(file, folderCov);
+          paintSeries(key);
+          return;
+        }
+        // no cover image in the folder — fall back to the art inside the mp3
+        const p = await loadParsed(file).catch(() => null);
+        const info = p && (p.thumb || p.coverUrl)
+          ? { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb }
+          : null;
         if (info) {
           rememberSeriesCover(file, info);
           paintSeries(key);
@@ -1363,7 +1349,7 @@ function openSeriesSheet() {
 }
 
 async function offlineMany(files) {
-  const todo = files.filter((f) => !f.demo && !offlineIds.has(f.id));
+  const todo = files.filter((f) => !offlineIds.has(f.id));
   if (!todo.length) { toast('이미 모두 오프라인에 저장되어 있어요'); return; }
   if (!drive.connected) { toast('먼저 Google Drive에 연결해 주세요.', { err: true }); return; }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
@@ -1592,11 +1578,6 @@ function makeThumb(src, size = 280) {
 
 async function loadParsed(file, { network = true } = {}) {
   if (!file) return null;
-  if (file.demo) {
-    const p = demoParsed(file);
-    parsedCache.set(file.id, p);
-    return p;
-  }
   if (parsedCache.has(file.id)) return parsedCache.get(file.id);
 
   let rec = null;
@@ -1658,9 +1639,6 @@ function indexCount() { return parsedCache.size + cachedEmpty.size; }
 const cachedEmpty = new Set();
 
 async function resolveTrack(file) {
-  if (file.demo) {
-    return { url: demoAudioUrl(file), parsed: demoParsed(file) };
-  }
   const saved = await db.get('audio', file.id).catch(() => null);
   const parsed = await loadParsed(file, { network: !saved }).catch(() => null);
 
@@ -1741,7 +1719,7 @@ function updatePlayerUI(st) {
     if (th) th.innerHTML = '<svg><use href="#i-mic"/></svg>';
     setSeek(0, 0, true);
   } else {
-    const p = parsedCache.get(cur.id) || (cur.demo ? demoParsed(cur) : null) || {};
+    const p = parsedCache.get(cur.id) || {};
     const title = $('#pTitle');
     if (title) title.textContent = displayTitleOf(cur);
     const bits = [];
@@ -1957,15 +1935,14 @@ function openSettings() {
     if (act === 'detect') detectFolder();
     if (act === 'disconnect') {
       drive.signOut();
-      state.mode = 'demo';
       try {
         localStorage.removeItem(treeCacheKey(settings.rootId));
         localStorage.removeItem(metaCacheKey(settings.rootId));
       } catch {}
       parsedCache.clear();
       cachedEmpty.clear();
-      useDemo();
-      toast('연결을 해제했어요. 데모 모드로 돌아갑니다.');
+      showDisconnected();
+      toast('연결을 해제했어요.');
       closeSheet();
     }
     if (act === 'clear-offline') {
@@ -2254,7 +2231,7 @@ function jumpToFilter({ tag = '', liver = '' } = {}) {
 /* subtitles */
 function openLyricsSheet(file) {
   const rec = parsedCache.get(file.id);
-  if (!rec && !cachedEmpty.has(file.id) && !file.demo && state.mode === 'live') {
+  if (!rec && !cachedEmpty.has(file.id) && state.mode === 'live') {
     openSheet('자막', '<div class="loading"><span class="spin-ico"></span>자막을 읽는 중…</div>', { tall: true });
     ui.sheet = 'lyrics';
     loadParsed(file)
@@ -2304,7 +2281,7 @@ function openLyricsSheet(file) {
 
 /* now playing — full-screen player */
 function currentParsed(file) {
-  return parsedCache.get(file.id) || (file.demo ? demoParsed(file) : {}) || {};
+  return parsedCache.get(file.id) || {};
 }
 
 /** cover for playback surfaces: prefer the full artwork, fall back to the thumb */
@@ -2869,7 +2846,6 @@ function removeFromPlaylist(fileId) {
 
 /* ─────────────────────────── offline ─────────────────────────── */
 async function toggleOffline(file) {
-  if (file.demo) { toast('데모 보이스는 이미 오프라인에서 재생돼요.'); return; }
   if (offlineIds.has(file.id)) {
     if (!confirm('이 보이스의 오프라인 저장을 지울까요?')) return;
     await db.del('audio', file.id);
@@ -2965,8 +2941,7 @@ function bindEvents() {
 
   $('#btnRefresh').addEventListener('click', async () => {
     if (state.loading) return;
-    if (!settings.clientId) { toast('데모 모드예요. 설정에서 Google Drive를 연결해 주세요.'); return; }
-    if (!drive.connected || state.mode === 'demo') { await loadLive({ interactive: true }); return; }
+    if (!drive.connected) { await loadLive({ interactive: true }); return; }
     await refresh(true);
   });
 
@@ -3081,10 +3056,6 @@ async function refreshMetaOnly() {
 }
 
 async function refresh(manual = false) {
-  if (state.mode === 'demo') {
-    if (manual) { useDemo(); toast('데모 데이터를 새로고침했어요'); }
-    return;
-  }
   state.loading = true;
   renderHeader();
   try {
@@ -3125,7 +3096,6 @@ function onListClick(e) {
   const act = action.dataset.act;
 
   if (act === 'connect') { openSettings(); return; }
-  if (act === 'demo') { useDemo(); return; }
   if (act === 'select-mode') { toggleSelectMode(); return; }
   if (act === 'pick-liver') { openLiverSheet(); return; }
   if (act === 'fav-liver') {
@@ -3350,11 +3320,11 @@ async function boot() {
     try { drive.restore(); } catch {}
   }
 
-  // 1) paint the last saved library first — no spinner, no demo flash
+  // 1) paint the last saved library first — no spinner flash
   const cached = loadTreeCache();
   const fromCache = !!(cached && cached.files?.length);
   if (fromCache) startFromCache(cached);
-  else useDemo();
+  else showDisconnected();
 
   bindEvents();
   initPlayer();

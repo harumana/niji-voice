@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'niji-voice';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function open() {
@@ -16,6 +16,7 @@ function open() {
       const db = req.result;
       if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio');
       if (!db.objectStoreNames.contains('parsed')) db.createObjectStore('parsed');
+      if (!db.objectStoreNames.contains('covers')) db.createObjectStore('covers');
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

@@ -232,6 +232,13 @@ export class Drive {
     return res;
   }
 
+  /** download an image as a local blob url — thumbnails need the token */
+  async mediaBlobUrl(id) {
+    const res = await this.raw(`${API}/files/${encodeURIComponent(id)}?alt=media`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  }
+
   async listChildren(folderId) {
     const out = [];
     let pageToken = '';
@@ -293,6 +300,7 @@ export class Drive {
               parentId: folder.id,
               driveId: f.driveId || folder.driveId || null,
               folderCover: img ? coverUrlOf(img) : null,
+              folderCoverId: img ? img.id : null,
             });
           }
         }
