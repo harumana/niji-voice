@@ -3990,6 +3990,66 @@ async function refresh(manual = false) {
   }
 }
 
+/* ── 당겨서 새로고침 ── */
+function bindPullToRefresh() {
+  const sc = $('#scroller');
+  const ptr = $('#ptr');
+  if (!sc || !ptr) return;
+  const label = ptr.querySelector('.ptr-t');
+  const TH = 46;
+  let startY = 0, pulling = false, dist = 0, busy = false;
+
+  const render = () => {
+    const p = Math.min(dist / TH, 1);
+    ptr.style.opacity = String(p);
+    ptr.style.transform = `translateY(${Math.min(dist, 54)}px)`;
+    ptr.classList.toggle('is-ready', dist >= TH);
+    if (!busy) label.textContent = dist >= TH ? '놓아서 새로고침' : '당겨서 새로고침';
+  };
+  const reset = () => {
+    ptr.style.opacity = '';
+    ptr.style.transform = '';
+    ptr.classList.remove('is-ready', 'is-busy');
+    dist = 0;
+  };
+
+  sc.addEventListener('touchstart', (e) => {
+    if (busy || e.touches.length !== 1) return;
+    if (sc.scrollTop > 0) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+    dist = 0;
+  }, { passive: true });
+
+  sc.addEventListener('touchmove', (e) => {
+    if (!pulling || busy) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || sc.scrollTop > 0) { pulling = false; reset(); return; }
+    dist = Math.min(dy * 0.55, 72);
+    render();
+  }, { passive: true });
+
+  const end = async () => {
+    if (!pulling) return;
+    pulling = false;
+    if (dist < TH) { reset(); return; }
+    busy = true;
+    ptr.classList.add('is-busy');
+    ptr.style.opacity = '1';
+    ptr.style.transform = 'translateY(10px)';
+    label.textContent = '새로고침 중…';
+    try {
+      if (state.loading) return;
+      await refresh(true);
+    } finally {
+      busy = false;
+      reset();
+    }
+  };
+  sc.addEventListener('touchend', end, { passive: true });
+  sc.addEventListener('touchcancel', () => { pulling = false; reset(); }, { passive: true });
+}
+
 /* list interactions */
 async function onListClick(e) {
   const action = e.target.closest('[data-act]');
@@ -4360,6 +4420,7 @@ async function boot() {
   else startFromOffline();
 
   bindEvents();
+  bindPullToRefresh();
   initPlayer();
   restoreLast();
   watchCovers();

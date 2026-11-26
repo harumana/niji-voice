@@ -149,12 +149,35 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 
 /* ───────── scroll area ───────── */
 .scroller {
+  position: relative;
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-bottom: calc(124px + var(--safe-b));
   overscroll-behavior-y: contain;
 }
+/* 당겨서 새로고침 */
+.ptr {
+  position: absolute; top: -40px; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  height: 34px; margin: 0 auto; width: max-content; padding: 0 14px;
+  border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(17, 24, 39, .10);
+  font-size: 11.5px; font-weight: 650; color: var(--muted);
+  opacity: 0; pointer-events: none; z-index: 12;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.ptr-spin {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid var(--line-2); border-top-color: var(--text-2);
+  transform: rotate(calc(var(--p, 0) * 270deg));
+  transition: transform .05s linear;
+}
+.ptr.is-ready { color: var(--text); border-color: var(--line-2); }
+.ptr.is-ready .ptr-spin { border-top-color: var(--text); }
+.ptr.is-busy .ptr-spin { animation: ptrspin .7s linear infinite; }
+@keyframes ptrspin { to { transform: rotate(360deg); } }
 
 /* ───────── tabs ───────── */
 .tabs {
