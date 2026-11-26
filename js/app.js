@@ -212,13 +212,22 @@ async function loadLive({ interactive = false } = {}) {
 
     if (!settings.rootId) {
       const found = await drive.findFolderByName('NIJI VOICE');
-      const pick = found.find((f) => f.driveId) || found[0];
-      if (!pick) throw new Error('드라이브에서 "NIJI VOICE" 폴더를 찾지 못했어요. 설정에서 폴더 ID를 직접 넣어 주세요.');
+      if (!found.length) throw new Error('드라이브에서 "NIJI VOICE" 폴더를 찾지 못했어요. 설정에서 폴더 ID를 직접 넣어 주세요.');
+      let pick = null;
+      if (found.length > 1) {
+        try {
+          const drives = await drive.listDrives();
+          const target = drives.find((d) => /NIJISANJI/i.test(d.name || ''));
+          pick = target ? found.find((f) => f.driveId === target.id) : null;
+        } catch {}
+      }
+      pick = pick || found.find((f) => f.driveId) || found[0];
       settings.rootId = pick.id;
       saveJSON(SETTINGS_KEY, settings);
     }
 
     const tree = await drive.tree(settings.rootId, {
+      skipFolder: skipFolderFilter,
       onProgress: ({ done }) => { setConnText(`불러오는 중… (${done}개 폴더)`); },
     });
     const meta = new SharedMeta(drive, settings.rootId);
@@ -252,6 +261,12 @@ async function loadLive({ interactive = false } = {}) {
     state.loading = false;
     renderHeader();
   }
+}
+
+/** Skip the untagged original-backup folder unless the user turns it back on. */
+function skipFolderFilter(name) {
+  if (settings.includeBackup) return false;
+  return /^00[ _\-]/.test(name) || /원본\s*백업/.test(name);
 }
 
 async function refreshOfflineIds() {
@@ -976,6 +991,14 @@ function openSettings() {
       <button class="btn-primary" data-act="save-settings">저장</button>
       <button class="btn-secondary" data-act="disconnect">연결 해제</button>
     </div>
+    <div class="field">
+      <label>폴더 옵션</label>
+      <label class="switchrow">
+        <input type="checkbox" id="setBackup" ${settings.includeBackup ? 'checked' : ''} />
+        <span>“00_원본 백업(태깅 전)” 폴더도 불러오기</span>
+      </label>
+      <p class="hint">기본은 꺼짐 — 태깅 전 원본 사본이 목록에서 빠져 중복이 줄어요.</p>
+    </div>
 
     <div class="field">
       <label>오프라인 저장</label>
@@ -1094,6 +1117,7 @@ async function saveSettingsFromUI() {
   const rootId = parseFolderInput($('#setRootId')?.value || '');
   settings.clientId = clientId;
   settings.rootId = rootId;
+  settings.includeBackup = !!$('#setBackup')?.checked;
   saveJSON(SETTINGS_KEY, settings);
   drive.setClientId(clientId);
   toast('저장했어요');
@@ -1122,6 +1146,8 @@ async function connectFromUI() {
   if (clientId) { settings.clientId = clientId; drive.setClientId(clientId); }
   const rootId = parseFolderInput($('#setRootId')?.value || settings.rootId || '');
   if (rootId) settings.rootId = rootId;
+  const backupEl = $('#setBackup');
+  if (backupEl) settings.includeBackup = !!backupEl.checked;
   saveJSON(SETTINGS_KEY, settings);
   closeSheet();
   const ok = await loadLive({ interactive: true });
@@ -1736,6 +1762,7 @@ async function refresh(manual = false) {
   renderHeader();
   try {
     const tree = await drive.tree(settings.rootId, {
+      skipFolder: skipFolderFilter,
       onProgress: ({ done }) => setConnText(`불러오는 중… (${done})`),
     });
     await shared.load();

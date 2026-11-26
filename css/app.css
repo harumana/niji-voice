@@ -816,6 +816,16 @@ input, textarea, select { font: inherit; color: inherit; }
 
 .chip:disabled, .selacts button:disabled { opacity: .45; }
 
+.switchrow {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 13.5px; color: var(--text-2); font-weight: 500;
+}
+.switchrow input {
+  width: 20px; height: 20px; accent-color: var(--primary); flex: 0 0 auto;
+}
+
 .boot-error {
   position: fixed; left: 12px; right: 12px; top: calc(12px + var(--safe-t));
   z-index: 200;

@@ -203,7 +203,7 @@ export class Drive {
    * Walk a folder tree.
    * @returns {Promise<{folders: Array, files: Array, root: object}>}
    */
-  async tree(rootId, { onProgress, concurrency = 4 } = {}) {
+  async tree(rootId, { onProgress, concurrency = 4, skipFolder } = {}) {
     const root = { id: rootId, name: 'NIJI VOICE', parentId: null, driveId: null };
     const folders = [];
     const files = [];
@@ -225,6 +225,7 @@ export class Drive {
         }
         for (const f of children) {
           if (f.mimeType === FOLDER_MIME) {
+            if (skipFolder && skipFolder(f.name)) continue;
             const entry = { id: f.id, name: f.name, parentId: folder.id, driveId: f.driveId || folder.driveId || null };
             folders.push(entry);
             queue.push(entry);
@@ -248,6 +249,19 @@ export class Drive {
 
     await Promise.all(Array.from({ length: Math.min(concurrency, 4) }, worker));
     return { root, folders, files };
+  }
+
+  async listDrives() {
+    const out = [];
+    let pageToken = '';
+    do {
+      const query = qs({ pageSize: '100', fields: 'nextPageToken, drives(id,name)', pageToken });
+      const res = await this.raw(`${API}/drives?${query}`);
+      const json = await res.json();
+      out.push(...(json.drives || []));
+      pageToken = json.nextPageToken || '';
+    } while (pageToken);
+    return out;
   }
 
   async findFolderByName(name) {
