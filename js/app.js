@@ -606,6 +606,7 @@ function filterFacets() {
   const tagCount = new Map();
   for (const f of state.files) for (const t of tagsOf(f)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
   const tags = [...tagCount.entries()]
+    .filter(([t]) => !/^(19|20)\d{2}$/.test(t))
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
     .slice(0, 80);
   return {
