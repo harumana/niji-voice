@@ -51,9 +51,34 @@ export class Drive {
     this.clientId = '';
     this.token = '';
     this.expiresAt = 0;
+    this.hint = '';
     this.tokenClient = null;
     this.gisLoading = null;
     this.pending = null;
+  }
+
+  /* token kept in localStorage so a reload / app relaunch stays signed in */
+  static get TOKEN_KEY() { return 'niji.token'; }
+
+  _persistToken() {
+    try {
+      localStorage.setItem(Drive.TOKEN_KEY, JSON.stringify({
+        token: this.token,
+        expiresAt: this.expiresAt,
+        hint: this.hint || '',
+      }));
+    } catch {}
+  }
+
+  async _rememberHint() {
+    if (this.hint) return this.hint;
+    try {
+      const res = await this.raw(`${API}/about?${qs({ fields: 'user(emailAddress,displayName)' })}`);
+      const json = await res.json();
+      this.hint = json?.user?.emailAddress || '';
+      if (this.hint) this._persistToken();
+    } catch {}
+    return this.hint;
   }
 
   setClientId(clientId) {
@@ -97,7 +122,7 @@ export class Drive {
     return this.tokenClient;
   }
 
-  requestToken({ prompt } = {}) {
+  requestToken({ prompt, hint } = {}) {
     const client = this.tokenClient;
     if (!client) return Promise.reject(new NeedsAuth());
     return new Promise((resolve, reject) => {
@@ -106,15 +131,20 @@ export class Drive {
           this.token = resp.access_token;
           const ttl = Number(resp.expires_in || 3500) * 1000;
           this.expiresAt = Date.now() + ttl;
-          try { sessionStorage.setItem('niji.token', JSON.stringify({ token: this.token, expiresAt: this.expiresAt })); } catch {}
+          this._persistToken();
+          this._rememberHint();
           resolve(this.token);
         } else {
           reject(new NeedsAuth(resp?.error === 'access_denied' ? '연결이 취소되었어요.' : 'Google 계정 연결에 실패했어요.'));
         }
       };
       client.error_callback = (err) => reject(new NeedsAuth(err?.message || 'Google 계정 연결에 실패했어요.'));
+      const override = {};
+      if (prompt !== undefined) override.prompt = prompt;
+      const h = hint !== undefined ? hint : this.hint;
+      if (h) override.login_hint = h;
       try {
-        client.requestAccessToken(prompt ? { prompt } : {});
+        client.requestAccessToken(override);
       } catch (e) {
         reject(e);
       }
@@ -123,14 +153,21 @@ export class Drive {
 
   restore() {
     try {
-      const raw = sessionStorage.getItem('niji.token');
+      let raw = localStorage.getItem(Drive.TOKEN_KEY);
+      if (!raw) raw = sessionStorage.getItem(Drive.TOKEN_KEY);
       if (!raw) return false;
-      const { token, expiresAt } = JSON.parse(raw);
+      const { token, expiresAt, hint } = JSON.parse(raw);
+      this.hint = hint || '';
       if (token && Date.now() < expiresAt - 30_000) {
         this.token = token;
         this.expiresAt = expiresAt;
+        this._persistToken();
+        try { sessionStorage.removeItem(Drive.TOKEN_KEY); } catch {}
         return true;
       }
+      // keep the hint for a silent refresh later
+      this._persistToken();
+      return false;
     } catch {}
     return false;
   }
@@ -140,10 +177,11 @@ export class Drive {
     if (this.connected) return this.token;
     await this.client();
     try {
+      // one quiet refresh attempt with the saved login hint
       return await this.requestToken({ prompt: '' });
     } catch (e) {
       if (!interactive) throw new NeedsAuth();
-      return this.requestToken();
+      return this.requestToken({ prompt: 'select_account' });
     }
   }
 
@@ -151,7 +189,8 @@ export class Drive {
     const token = this.token;
     this.token = '';
     this.expiresAt = 0;
-    try { sessionStorage.removeItem('niji.token'); } catch {}
+    try { localStorage.removeItem(Drive.TOKEN_KEY); } catch {}
+    try { sessionStorage.removeItem(Drive.TOKEN_KEY); } catch {}
     try {
       if (token && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(token);
     } catch {}

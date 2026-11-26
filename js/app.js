@@ -1498,7 +1498,7 @@ function openSettings() {
   const isLive = state.mode === 'live';
   const online = drive.connected;
   const stateText = isLive
-    ? (online ? 'Google Drive 연결됨' : '저장된 목록 표시 중 — 연결 필요')
+    ? (online ? `Google Drive 연결됨${drive.hint ? ` · ${drive.hint}` : ''}` : '저장된 목록 표시 중 — 연결 필요')
     : '데모 모드';
   const body = openSheet('설정', `
     <div class="field">
