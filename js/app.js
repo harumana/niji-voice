@@ -1460,6 +1460,7 @@ async function scanCategoryLivers() {
     }
   } catch {}
   liverScanRunning = false;
+  if (ui.sheet === 'liver') openLiverSheet();
 }
 
 /** 라이버 폴더 이름들 (보이스 드라마·원본 백업 같은 분류 폴더 제외) */
@@ -1852,6 +1853,7 @@ function renderSeriesDetail(groups) {
 }
 
 function openLiverSheet() {
+  scanCategoryLivers();
   const livers = collectLivers();
   const cur = currentLiver(livers);
   ui.sheet = 'liver';
