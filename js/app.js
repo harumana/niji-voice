@@ -1027,6 +1027,7 @@ function openSettings() {
         <li><b>홈 화면에 추가</b>를 선택하면 앱처럼 열려요.</li>
       </ol>
       <p class="hint">홈 화면에서 열면 주소창 없이 전체 화면으로 뜨고, 잠금화면에서도 재생/다음 곡을 조작할 수 있어요.</p>
+      <p class="hint">Google 로그인은 <b>Safari</b>에서 먼저 한 번 해 두는 게 안전해요. 홈 화면 앱에서 로그인 창이 뜨지 않으면 Safari로 열어 연결해 주세요.</p>
     </div>
 
     <div class="field">
