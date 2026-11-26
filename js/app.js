@@ -1968,6 +1968,7 @@ function renderSelectionBar() {
   const bar = $('#selBar');
   const n = state.selected.size;
   bar.hidden = !state.selectMode;
+  document.body.classList.toggle('selmode', !!state.selectMode);
   $('#selCount').textContent = `${n}개 선택`;
   const off = inOfflineView();
   const rm = $('#selBar [data-sel="offline-remove"]');
