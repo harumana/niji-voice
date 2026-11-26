@@ -834,6 +834,108 @@ function folderModeBar(mode, count = null) {
   </div>`;
 }
 
+/* ── lazy ID3 covers: one range read per series, shared by its tracks ── */
+const coverQueue = [];          // series keys waiting
+const coverRep = new Map();     // seriesKey -> representative file id
+let coverActive = 0;
+let coverIO = null;
+let coverMO = null;
+let coverScanTimer = 0;
+
+function watchCovers() {
+  const area = $('#listArea');
+  if (!area) return;
+  if (!coverMO) {
+    coverMO = new MutationObserver(() => {
+      clearTimeout(coverScanTimer);
+      coverScanTimer = setTimeout(scanCovers, 80);
+    });
+    coverMO.observe(area, { childList: true, subtree: true });
+  }
+  clearTimeout(coverScanTimer);
+  coverScanTimer = setTimeout(scanCovers, 60);
+}
+
+function scanCovers() {
+  const targets = $$('#listArea [data-cover]:not([data-painted])');
+  if (!targets.length) return;
+  if (state.mode !== 'live' || !drive.connected) return;
+  if (!('IntersectionObserver' in window)) {
+    for (const el of targets.slice(0, 10)) queueCover(el.dataset.cover);
+    return;
+  }
+  if (coverIO) coverIO.disconnect();
+  coverIO = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      coverIO.unobserve(en.target);
+      queueCover(en.target.dataset.cover);
+    }
+  }, { root: $('#scroller'), rootMargin: '420px 0px' });
+  for (const el of targets) coverIO.observe(el);
+}
+
+function queueCover(fileId) {
+  if (!fileId || state.mode !== 'live' || !drive.connected) return;
+  const file = fileById(fileId);
+  if (!file) return;
+  const key = seriesKeyOf(file);
+  if (seriesCover.has(key)) { paintSeries(key); return; }
+  const own = parsedCache.get(fileId);
+  if (own?.thumb || own?.coverUrl) {
+    rememberSeriesCover(file, { thumb: own.thumb || own.coverUrl, full: own.coverUrl || own.thumb });
+    paintSeries(key);
+    return;
+  }
+  if (cachedEmpty.has(fileId)) return;
+  if (seriesPending.has(key) || coverQueue.includes(key)) return;
+  coverQueue.push(key);
+  coverRep.set(key, fileId);
+  pumpCovers();
+}
+
+function pumpCovers() {
+  while (coverActive < 5 && coverQueue.length) {
+    const key = coverQueue.shift();
+    const file = fileById(coverRep.get(key));
+    if (!file) continue;
+    if (seriesCover.has(key)) { paintSeries(key); continue; }
+    if (cachedEmpty.has(file.id)) continue;
+    coverActive += 1;
+    seriesPending.add(key);
+    loadParsed(file)
+      .then((p) => {
+        if (!p) return;
+        const info = p.thumb || p.coverUrl ? { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb } : null;
+        if (info) {
+          rememberSeriesCover(file, info);
+          paintSeries(key);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        coverActive -= 1;
+        seriesPending.delete(key);
+        pumpCovers();
+      });
+  }
+}
+
+/** Paint every rendered cover element that belongs to this series. */
+function paintSeries(key) {
+  const info = seriesCover.get(key);
+  if (!info) return;
+  const url = info.thumb || info.full;
+  if (!url) return;
+  for (const el of $$('#listArea [data-cover]')) {
+    if (el.dataset.painted === '1') continue;
+    const f = fileById(el.dataset.cover);
+    if (!f || seriesKeyOf(f) !== key) continue;
+    el.dataset.painted = '1';
+    el.innerHTML = `<img src="${url}" alt="" loading="lazy" />`;
+  }
+}
+
 function seriesTileHTML(group) {
   const coverFile = group.files.find((f) => coverInfoFor(f)) || group.files[0];
   const cov = coverInfoFor(coverFile);
