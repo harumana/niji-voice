@@ -66,6 +66,38 @@ function cleanSeriesName(text, { liverShort = '', liver = '' } = {}) {
 
 const autoTagCache = new Map();
 
+/** stable key for "same series" cover sharing (path/name only, no ID3) */
+function seriesKeyOf(f) {
+  if (!f) return '';
+  const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
+  const opts = { liverShort, liver: f.liver || '' };
+  const sources = [...(f.path || []).slice(1).reverse(), displayName(f.name || '')];
+  let name = '';
+  for (const source of sources) {
+    const n = cleanSeriesName(source, opts);
+    if (n && n !== liverShort && n !== f.year) { name = n; break; }
+  }
+  return `${f.liver || ''}|${f.year || ''}|${name || displayName(f.name)}`;
+}
+
+/* series-level cover cache: one fetch per series, shared by its tracks */
+const seriesCover = new Map();      // seriesKey -> { thumb, full }
+const seriesPending = new Set();    // seriesKey being fetched
+
+function coverInfoFor(f) {
+  if (!f) return null;
+  const p = parsedCache.get(f.id);
+  if (p?.thumb || p?.coverUrl) return { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb };
+  return seriesCover.get(seriesKeyOf(f)) || null;
+}
+
+function rememberSeriesCover(f, info) {
+  if (!f || !info) return;
+  const key = seriesKeyOf(f);
+  const prev = seriesCover.get(key);
+  if (!prev || (!prev.full && info.full)) seriesCover.set(key, info);
+}
+
 /** series / album name derived from album → folders → file name */
 function seriesNameOf(f) {
   if (!f) return '';
@@ -641,7 +673,7 @@ function cardHTML(f, { playlist = false } = {}) {
   const parsed = parsedCache.get(f.id);
   const hasLyrics = !!parsed?.lyrics?.length;
   const saved = offlineIds.has(f.id);
-  const cover = parsed?.coverUrl || '';
+  const cover = coverInfoFor(f)?.thumb || '';
 
   const meta = [];
   const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
@@ -768,7 +800,7 @@ function renderPlaylists() {
         <span>${esc(pl.name)} · ${files.length}개</span>
       </div>
       ${files.length ? files.map((f) => cardHTML(f, { playlist: true })).join('')
-        : emptyHTML({ icon: '🎵', title: '아직 곡이 없어요', desc: '곡의 ⋯ 메뉴에서 재생목록에 추가할 수 있어요.' })}
+        : emptyHTML({ icon: '🎵', title: '아직 보이스가 없어요', desc: '보이스의 ⋯ 메뉴에서 재생목록에 추가할 수 있어요.' })}
       <div class="btnrow" style="margin:16px 4px 0">
         <button class="btn-secondary" data-act="pl-play">전체 재생</button>
         <button class="btn-secondary btn-danger" data-act="pl-delete">재생목록 삭제</button>
@@ -781,13 +813,13 @@ function renderPlaylists() {
     <button class="pl-row" data-act="pl-open" data-id="${esc(p.id)}">
       <span class="pl-ico"><svg><use href="#i-list"/></svg></span>
       <span class="pl-name">${esc(p.name)}</span>
-      <span class="pl-count">${p.fileIds.length}곡</span>
+      <span class="pl-count">${p.fileIds.length}개</span>
       <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
     </button>`).join('');
 
   area.innerHTML = `
     <div class="listhead"><span>내 재생목록 ${personal.playlists.length}개</span></div>
-    ${rows || emptyHTML({ icon: '🎵', title: '재생목록이 없어요', desc: '원하는 곡만 모아 두고 한 번에 들을 수 있어요.' })}
+    ${rows || emptyHTML({ icon: '🎵', title: '재생목록이 없어요', desc: '원하는 보이스만 모아 두고 한 번에 들을 수 있어요.' })}
     <div style="padding:12px 4px"><button class="btn-secondary" data-act="pl-new">+ 새 재생목록</button></div>`;
 }
 
@@ -802,137 +834,13 @@ function folderModeBar(mode, count = null) {
   </div>`;
 }
 
-function tileHTML(f) {
-  const parsed = parsedCache.get(f.id);
-  const cover = parsed?.coverUrl || '';
-  const playing = player?.current?.id === f.id;
-  const title = parsed?.title || displayName(f.name);
-  return `<button type="button" class="tile ${playing ? 'is-playing' : ''}" data-act="tile" data-id="${esc(f.id)}">
-    <span class="tile-cov">
-      <span class="cov-box" data-cover="${esc(f.id)}"${cover ? ' data-painted="1"' : ''}>${cover ? `<img src="${cover}" alt="" loading="lazy" />` : ''}</span>
-      <span class="tile-play"><svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg></span>
-    </span>
-    <span class="tile-name">${esc(title)}</span>
-  </button>`;
-}
-
-/* ── lazy ID3 covers (range request, IndexedDB cached) ── */
-const coverPending = new Set();
-const coverQueue = [];
-let coverActive = 0;
-let coverIO = null;
-let coverMO = null;
-let coverScanTimer = 0;
-
-function watchCovers() {
-  const area = $('#listArea');
-  if (!area) return;
-  if (!coverMO) {
-    coverMO = new MutationObserver(() => {
-      clearTimeout(coverScanTimer);
-      coverScanTimer = setTimeout(scanCovers, 80);
-    });
-    coverMO.observe(area, { childList: true, subtree: true });
-  }
-  clearTimeout(coverScanTimer);
-  coverScanTimer = setTimeout(scanCovers, 60);
-}
-
-function scanCovers() {
-  const targets = $$('#listArea [data-cover]:not([data-painted])');
-  if (!targets.length) return;
-  if (state.mode !== 'live' || !drive.connected) return;
-  if (!('IntersectionObserver' in window)) {
-    for (const el of targets.slice(0, 8)) queueCover(el.dataset.cover);
-    return;
-  }
-  if (coverIO) coverIO.disconnect();
-  coverIO = new IntersectionObserver((entries) => {
-    for (const en of entries) {
-      if (!en.isIntersecting) continue;
-      coverIO.unobserve(en.target);
-      queueCover(en.target.dataset.cover);
-    }
-  }, { root: $('#scroller'), rootMargin: '260px 0px' });
-  for (const el of targets) coverIO.observe(el);
-}
-
-function queueCover(fileId) {
-  if (!fileId || state.mode !== 'live' || !drive.connected) return;
-  const cached = parsedCache.get(fileId);
-  if (cached?.coverUrl) { paintCover(fileId, cached.coverUrl); return; }
-  if (cachedEmpty.has(fileId)) return;
-  if (coverPending.has(fileId) || coverQueue.includes(fileId)) return;
-  coverQueue.push(fileId);
-  pumpCovers();
-}
-
-function pumpCovers() {
-  while (coverActive < 3 && coverQueue.length) {
-    const id = coverQueue.shift();
-    const file = fileById(id);
-    if (!file) continue;
-    const cached = parsedCache.get(id);
-    if (cached?.coverUrl) { paintCover(id, cached.coverUrl); continue; }
-    coverActive += 1;
-    coverPending.add(id);
-    loadParsed(file)
-      .then((p) => { if (p?.coverUrl) paintCover(id, p.coverUrl); })
-      .catch(() => {})
-      .finally(() => {
-        coverActive -= 1;
-        coverPending.delete(id);
-        pumpCovers();
-      });
-  }
-}
-
-function paintCover(fileId, url) {
-  if (!url) return;
-  let els = [];
-  try { els = $$(`#listArea [data-cover="${CSS.escape(fileId)}"]`); } catch { return; }
-  for (const el of els) {
-    if (el.dataset.painted === '1' && el.querySelector('img')) continue;
-    el.dataset.painted = '1';
-    el.innerHTML = `<img src="${url}" alt="" loading="lazy" />`;
-  }
-}
-
-function collectLivers() {
-  const map = new Map();
-  for (const f of visibleFiles()) {
-    const liver = f.liver || '기타';
-    map.set(liver, (map.get(liver) || 0) + 1);
-  }
-  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true }));
-}
-
-function currentLiver(livers) {
-  const wanted = state.collectionLiver || personal.lastLiver || '';
-  if (wanted && livers.some(([l]) => l === wanted)) return wanted;
-  return livers.length ? livers[0][0] : '';
-}
-
-function liverInitial(name) {
-  const m = String(name || '').match(/[가-힣A-Za-zぁ-んァ-ヶ一-龠0-9]/);
-  return m ? m[0] : '♪';
-}
-
-function liverTone(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  const hue = Math.abs(h) % 360;
-  return `background:hsl(${hue} 55% 95%);color:hsl(${hue} 42% 40%)`;
-}
-
 function seriesTileHTML(group) {
-  const withCover = group.files.find((f) => parsedCache.get(f.id)?.coverUrl);
-  const coverFile = withCover || group.files[0];
-  const cover = withCover ? parsedCache.get(withCover.id).coverUrl : '';
+  const coverFile = group.files.find((f) => coverInfoFor(f)) || group.files[0];
+  const cov = coverInfoFor(coverFile);
   const playing = group.files.some((f) => player?.current?.id === f.id);
   return `<button type="button" class="tile ${playing ? 'is-playing' : ''}" data-act="open-series" data-title="${esc(group.title)}" data-ids="${esc(group.files.map((f) => f.id).join(','))}">
     <span class="tile-cov">
-      <span class="cov-box" data-cover="${esc(coverFile ? coverFile.id : '')}"${cover ? ' data-painted="1"' : ''}>${cover ? `<img src="${cover}" alt="" loading="lazy" />` : ''}</span>
+      <span class="cov-box" data-cover="${esc(coverFile ? coverFile.id : '')}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.thumb || cov.full}" alt="" loading="lazy" />` : ''}</span>
       ${group.files.length > 1 ? `<span class="tile-badge">${group.files.length}</span>` : ''}
       <span class="tile-play"><svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg></span>
     </span>
@@ -940,12 +848,34 @@ function seriesTileHTML(group) {
   </button>`;
 }
 
+/** group the selected liver's voices into series, kept in year sections */
+function collectionGroups(liver) {
+  const files = visibleFiles().filter((f) => (f.liver || '기타') === liver);
+  const years = new Map();
+  for (const f of files) {
+    const y = f.year || '기타';
+    const title = seriesNameOf(f) || displayName(f.name);
+    if (!years.has(y)) years.set(y, new Map());
+    const g = years.get(y);
+    if (!g.has(title)) g.set(title, { title, year: y, files: [] });
+    g.get(title).files.push(f);
+  }
+  const yearKeys = [...years.keys()].sort((a, b) => String(b).localeCompare(String(a), 'ko', { numeric: true }));
+  const byYear = yearKeys.map((year) => ({
+    year,
+    groups: [...years.get(year).values()]
+      .map((g) => ({ ...g, files: g.files.slice().sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true })) }))
+      .sort((a, b) => a.title.localeCompare(b.title, 'ko', { numeric: true })),
+  }));
+  return { byYear, groups: byYear.flatMap((s) => s.groups) };
+}
+
 function renderCollection() {
   const area = $('#listArea');
   const all = visibleFiles();
   if (!all.length) {
     area.innerHTML = folderModeBar('collection', 0) + (state.files.length
-      ? emptyHTML({ icon: '🔍', title: '조건에 맞는 곡이 없어요', desc: '검색어나 필터를 바꿔 보세요.', actions: '<button class="btn-line" data-act="reset-search">검색·필터 초기화</button>' })
+      ? emptyHTML({ icon: '🔍', title: '조건에 맞는 보이스가 없어요', desc: '검색어나 필터를 바꿔 보세요.', actions: '<button class="btn-line" data-act="reset-search">검색·필터 초기화</button>' })
       : emptyHTML({ icon: '📂', title: '아직 보이스가 없어요', desc: '드라이브를 연결하면 라이버·연도별로 모아 보여드려요.' }));
     return;
   }
@@ -953,54 +883,60 @@ function renderCollection() {
   const livers = collectLivers();
   const liver = currentLiver(livers);
   state.collectionLiver = liver;
+  const { byYear, groups } = collectionGroups(liver);
 
-  // one series open → its track list
-  if (state.openSeries) {
-    const list = (state.openSeries.ids || []).map(fileById).filter(Boolean);
-    if (!list.length) { state.openSeries = null; return renderCollection(); }
-    area.innerHTML = `
-      <div class="colhead">
-        <button type="button" class="mini" data-act="close-series">‹ 컬렉션</button>
-        <button type="button" class="mini has-content" data-act="series-play">전체 재생</button>
-      </div>
-      <h3 class="series-title">${esc(state.openSeries.title)}</h3>
-      <p class="series-sub">${list.length}곡 · ${esc(liver)}</p>
-      ${list.map((f) => cardHTML(f)).join('')}
-    `;
-    $('#listFoot').textContent = '';
-    return;
-  }
+  if (state.openSeries) return renderSeriesDetail(liver, groups);
 
   const files = all.filter((f) => (f.liver || '기타') === liver);
-
   const hero = `
     <button type="button" class="lib-card" data-act="pick-liver">
       <span class="lib-avatar" style="${liverTone(liver)}">${esc(liverInitial(liver))}</span>
       <span class="lib-meta">
         <span class="lib-name">${esc(liver)}</span>
-        <span class="lib-sub">시리즈 ${new Set(files.map((f) => seriesNameOf(f) || displayName(f.name))).size}개 · 보이스 ${files.length}개</span>
+        <span class="lib-sub">시리즈 ${groups.length}개 · 보이스 ${files.length}개</span>
       </span>
       <span class="lib-change">라이버 변경</span>
     </button>`;
 
-  const years = new Map();
-  for (const f of files) {
-    const y = f.year || '기타';
-    const title = seriesNameOf(f) || displayName(f.name);
-    if (!years.has(y)) years.set(y, new Map());
-    const group = years.get(y);
-    if (!group.has(title)) group.set(title, { title, files: [] });
-    group.get(title).files.push(f);
-  }
-  const yearKeys = [...years.keys()].sort((a, b) => String(b).localeCompare(String(a), 'ko', { numeric: true }));
-  const sections = yearKeys.map((year) => {
-    const groups = [...years.get(year).values()]
-      .sort((a, b) => a.title.localeCompare(b.title, 'ko', { numeric: true }));
-    return `<div class="col-year">${esc(year)}<span>${groups.length}</span></div>
-      <div class="col-grid">${groups.map(seriesTileHTML).join('')}</div>`;
-  }).join('');
+  const sections = byYear.map((section) => `
+    <div class="col-year">${esc(section.year)}<span>${section.groups.length}</span></div>
+    <div class="col-grid">${section.groups.map(seriesTileHTML).join('')}</div>`).join('');
 
   area.innerHTML = folderModeBar('collection', files.length) + hero + sections;
+  $('#listFoot').textContent = '';
+}
+
+function renderSeriesDetail(liver, groups) {
+  const area = $('#listArea');
+  let idx = groups.findIndex((g) => g.title === state.openSeries.title);
+  if (idx < 0) { state.openSeries = null; return renderCollection(); }
+  const group = groups[idx];
+  const ids = group.files.map((f) => f.id);
+  state.openSeries = { title: group.title, ids };
+  const prev = groups[idx - 1] || null;
+  const next = groups[idx + 1] || null;
+  const coverFile = group.files.find((f) => coverInfoFor(f)) || group.files[0];
+  const cov = coverInfoFor(coverFile);
+
+  area.innerHTML = `
+    <div class="sd-bar">
+      <button type="button" class="sd-ico back" data-act="close-series" aria-label="뒤로"><svg><use href="#i-chevron"/></svg></button>
+      <div class="sd-bar-actions">
+        <button type="button" class="sd-ico" data-act="series-offline" aria-label="오프라인 일괄 저장"><svg><use href="#i-download"/></svg></button>
+        <button type="button" class="sd-ico" data-act="series-more" aria-label="더보기"><svg><use href="#i-more"/></svg></button>
+      </div>
+    </div>
+    <div class="sd-liver">${esc(liver)}</div>
+    <div class="sd-art">
+      <button type="button" class="sd-nav prev" data-act="series-move" data-dir="-1" aria-label="이전 시리즈" ${prev ? '' : 'disabled'}><svg><use href="#i-chevron"/></svg></button>
+      <span class="sd-cover" data-cover="${esc(coverFile.id)}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.full || cov.thumb}" alt="" />` : ''}</span>
+      <button type="button" class="sd-nav next" data-act="series-move" data-dir="1" aria-label="다음 시리즈" ${next ? '' : 'disabled'}><svg><use href="#i-chevron"/></svg></button>
+    </div>
+    <h2 class="sd-title">${esc(group.title)}</h2>
+    <div class="sd-meta">${group.files.length}개 보이스${group.year ? ` · ${esc(group.year)}` : ''}</div>
+    <button type="button" class="sd-play" data-act="series-play"><svg><use href="#i-play"/></svg>전체 재생</button>
+    <div class="sd-tracks">${group.files.map((f) => cardHTML(f)).join('')}</div>
+  `;
   $('#listFoot').textContent = '';
 }
 
@@ -1034,6 +970,60 @@ function openLiverSheet() {
   });
 }
 
+function openSeriesSheet() {
+  const files = (state.openSeries?.ids || []).map(fileById).filter(Boolean);
+  if (!files.length) return;
+  ui.sheet = 'series';
+  const body = openSheet(state.openSeries.title || '시리즈', `
+    <button type="button" class="act-item" data-act="s-play">
+      <span class="ai"><svg><use href="#i-play"/></svg></span><span class="al">전체 재생</span>
+    </button>
+    <button type="button" class="act-item" data-act="s-offline">
+      <span class="ai"><svg><use href="#i-download"/></svg></span><span class="al">오프라인 일괄 저장</span><span class="av">${files.length}개</span>
+    </button>
+    <button type="button" class="act-item" data-act="s-tag">
+      <span class="ai"><svg><use href="#i-tag"/></svg></span><span class="al">전체에 태그</span>
+    </button>
+    <button type="button" class="act-item" data-act="s-pl">
+      <span class="ai"><svg><use href="#i-list"/></svg></span><span class="al">재생목록에 추가</span>
+    </button>
+  `);
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    const ids = files.map((f) => f.id);
+    if (act === 's-play') { closeSheet(); player.playFiles(files, 0); toast(`${files.length}개 재생 시작`); }
+    if (act === 's-offline') { closeSheet(); offlineMany(files); }
+    if (act === 's-tag') { openTagSheet(ids); }
+    if (act === 's-pl') { openPlaylistPicker(ids); }
+  });
+}
+
+async function offlineMany(files) {
+  const todo = files.filter((f) => !f.demo && !offlineIds.has(f.id));
+  if (!todo.length) { toast('이미 모두 오프라인에 저장되어 있어요'); return; }
+  if (!drive.connected) { toast('먼저 Google Drive에 연결해 주세요.', { err: true }); return; }
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+  const t = toastProgress(`오프라인 저장 0/${todo.length}`);
+  let ok = 0;
+  for (const f of todo) {
+    try {
+      const buf = await drive.download(f.id);
+      await db.put('audio', f.id, {
+        fileId: f.id, name: f.name, size: buf.byteLength,
+        blob: new Blob([buf], { type: 'audio/mpeg' }), savedAt: Date.now(),
+      });
+      offlineIds.add(f.id);
+      ok += 1;
+    } catch {}
+    t.update({ received: ok, total: todo.length });
+  }
+  t.done();
+  toast(`${ok}개를 오프라인에 저장했어요`);
+  renderList();
+}
+
 function renderFolders() {
   if (state.folderMode !== 'tree') return renderCollection();
   const area = $('#listArea');
@@ -1060,7 +1050,7 @@ function renderFolders() {
     return `<button class="folder-card" data-act="go-folder" data-id="${esc(f.id)}">
       <span class="folder-ico"><svg><use href="#i-folder"/></svg></span>
       <span class="folder-name">${esc(f.name)}</span>
-      <span class="folder-meta">${n ? n + '곡' : ''}${subs ? (n ? ' · ' : '') + subs + '폴더' : ''}</span>
+      <span class="folder-meta">${n ? n + '개' : ''}${subs ? (n ? ' · ' : '') + subs + '폴더' : ''}</span>
       <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
     </button>`;
   }).join('');
@@ -1198,6 +1188,7 @@ function hydrate(rec) {
   if (!rec) return null;
   const cached = parsedCache.get(rec.fileId);
   if (cached) return cached;
+  const full = rec.coverBlob ? URL.createObjectURL(rec.coverBlob) : null;
   const out = {
     title: rec.title || '',
     artist: rec.artist || '',
@@ -1206,10 +1197,35 @@ function hydrate(rec) {
     lyrics: rec.lyrics || [],
     plainLyrics: rec.plainLyrics || '',
     coverType: rec.coverType || 'image/jpeg',
-    coverUrl: rec.coverBlob ? URL.createObjectURL(rec.coverBlob) : null,
+    coverUrl: full,
+    thumb: rec.coverThumb || full,
   };
   parsedCache.set(rec.fileId, out);
   return out;
+}
+
+/** Downscale a cover to a light list thumbnail (canvas → JPEG data URL). */
+function makeThumb(src, size = 280) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, size / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+          const w = Math.max(1, Math.round((img.naturalWidth || size) * scale));
+          const h = Math.max(1, Math.round((img.naturalHeight || size) * scale));
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          if (!ctx) return resolve(src);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', 0.8));
+        } catch { resolve(src); }
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    } catch { resolve(src); }
+  });
 }
 
 async function loadParsed(file, { network = true } = {}) {
@@ -1236,6 +1252,8 @@ async function loadParsed(file, { network = true } = {}) {
     return null;
   }
   const coverBlob = tag.cover ? new Blob([tag.cover.bytes], { type: tag.cover.mime || 'image/jpeg' }) : null;
+  const fullUrl = coverBlob ? URL.createObjectURL(coverBlob) : null;
+  const coverThumb = fullUrl ? await makeThumb(fullUrl) : null;
   const newRec = {
     fileId: file.id,
     title: tag.title || '',
@@ -1245,24 +1263,33 @@ async function loadParsed(file, { network = true } = {}) {
     lyrics: tag.lyrics || [],
     plainLyrics: tag.plainLyrics || '',
     coverBlob,
+    coverThumb,
     coverType: tag.cover?.mime || 'image/jpeg',
     tagSize: tag.tagSize || 0,
     parsedAt: Date.now(),
   };
   await db.put('parsed', file.id, newRec).catch(() => {});
-  return hydrate(newRec);
+  const out = hydrate({ ...newRec, coverBlob: null });
+  if (out) { out.coverUrl = fullUrl; out.thumb = coverThumb || fullUrl; }
+  parsedCache.set(file.id, out);
+  if (out?.thumb || out?.coverUrl) rememberSeriesCover(file, { thumb: out.thumb, full: out.coverUrl });
+  return out;
 }
 
 async function primeCache() {
-    try {
-      const rows = await db.all('parsed');
-      for (const r of rows) {
-        if (!r?.fileId) continue;
-        if (r.empty) cachedEmpty.add(r.fileId);
-        else if (!parsedCache.has(r.fileId)) hydrate(r);
+  try {
+    const rows = await db.all('parsed');
+    for (const r of rows) {
+      if (!r?.fileId) continue;
+      if (r.empty) { cachedEmpty.add(r.fileId); continue; }
+      const p = parsedCache.get(r.fileId) || hydrate(r);
+      const f = fileById(r.fileId);
+      if (f && (p?.thumb || p?.coverUrl)) {
+        rememberSeriesCover(f, { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb });
       }
-    } catch {}
-  }
+    }
+  } catch {}
+}
 
 function indexCount() { return parsedCache.size + cachedEmpty.size; }
 
@@ -1345,7 +1372,7 @@ function updatePlayerUI(st) {
 
   if (!cur) {
     const t = $('#pTitle');
-    if (t) t.textContent = '재생 중인 곡 없음';
+    if (t) t.textContent = '재생 중인 보이스 없음';
     const s = $('#pSub');
     if (s) s.textContent = '전체 재생을 눌러 시작해 보세요';
     const th = $('#pThumb');
@@ -1361,7 +1388,8 @@ function updatePlayerUI(st) {
     const sub = $('#pSub');
     if (sub) sub.textContent = bits.join(' · ') || cur.liver || '';
     const thumb = $('#pThumb');
-    if (thumb) thumb.innerHTML = p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>';
+    const cvT = coverOf(cur).thumb;
+    if (thumb) thumb.innerHTML = cvT ? `<img src="${cvT}" alt="" />` : '<svg><use href="#i-mic"/></svg>';
     const dur = st.duration || p.duration || shared?.data?.durations?.[cur.id] || 0;
     setSeek(st.currentTime, dur || 0, false);
     if (dur > 0 && shared && st.duration > 0 && Math.abs((shared.data.durations?.[cur.id] || 0) - st.duration) > 1) {
@@ -1539,7 +1567,7 @@ function openSettings() {
         <li>하단의 <b>공유</b> 버튼을 누릅니다.</li>
         <li><b>홈 화면에 추가</b>를 선택하면 앱처럼 열려요.</li>
       </ol>
-      <p class="hint">홈 화면에서 열면 주소창 없이 전체 화면으로 뜨고, 잠금화면에서도 재생/다음 곡을 조작할 수 있어요.</p>
+      <p class="hint">홈 화면에서 열면 주소창 없이 전체 화면으로 뜨고, 잠금화면에서도 재생/다음 보이스를 조작할 수 있어요.</p>
       <p class="hint">Google 로그인은 <b>Safari</b>에서 먼저 한 번 해 두는 게 안전해요. 홈 화면 앱에서 로그인 창이 뜨지 않으면 Safari로 열어 연결해 주세요.</p>
     </div>
 
@@ -1555,7 +1583,7 @@ function openSettings() {
 
   db.audioUsage().then((u) => {
     const el = $('#offlineUsage');
-    if (el) el.textContent = `${u.count}곡${u.bytes ? ` · ${fmtBytes(u.bytes)}` : ''}`;
+    if (el) el.textContent = `${u.count}개${u.bytes ? ` · ${fmtBytes(u.bytes)}` : ''}`;
   }).catch(() => {});
 
   body.addEventListener('click', (e) => {
@@ -1579,7 +1607,7 @@ function openSettings() {
       closeSheet();
     }
     if (act === 'clear-offline') {
-      if (!confirm('오프라인 저장한 곡을 모두 지울까요?')) return;
+      if (!confirm('오프라인 저장한 보이스를 모두 지울까요?')) return;
       db.clear('audio').then(() => { offlineIds.clear(); toast('오프라인 저장을 비웠어요'); renderList(); closeSheet(); });
     }
     if (act === 'clear-index') {
@@ -1858,7 +1886,7 @@ function jumpToFilter({ tag = '', liver = '' } = {}) {
   const sc = $('#scroller');
   if (sc) sc.scrollTo({ top: 0 });
   if (tag) toast(`#${tag} 태그로 모았어요`);
-  else if (liver) toast(`${liver} 곡만 보여드려요`);
+  else if (liver) toast(`${liver} 보이스만 보여드려요`);
 }
 
 /* subtitles */
@@ -1917,6 +1945,13 @@ function currentParsed(file) {
   return parsedCache.get(file.id) || (file.demo ? demoParsed(file) : {}) || {};
 }
 
+/** cover for playback surfaces: prefer the full artwork, fall back to the thumb */
+function coverOf(file) {
+  const info = coverInfoFor(file);
+  if (!info) return { thumb: '', full: '' };
+  return { thumb: info.thumb || info.full || '', full: info.full || info.thumb || '' };
+}
+
 function rateLabel(rate) {
   const r = Number(rate) || 1;
   if (Math.abs(r - 1) < 0.001) return '1.0x';
@@ -1953,9 +1988,9 @@ function npPanelHTML(file, seg) {
   if (seg === 'cover') {
     return `
     <div class="np-art">
-      ${p.coverUrl
-        ? `<img src="${p.coverUrl}" alt="${esc(p.title || displayName(file.name))}" data-act="np-art" />`
-        : '<div class="np-art-empty"><svg><use href="#i-mic"/></svg><span>이 곡에는 앨범 커버가 없어요.</span></div>'}
+      ${coverOf(file).full
+        ? `<img src="${coverOf(file).full}" alt="${esc(p.title || displayName(file.name))}" data-act="np-art" />`
+        : '<div class="np-art-empty"><svg><use href="#i-mic"/></svg><span>이 보이스에는 앨범 커버가 없어요.</span></div>'}
     </div>`;
   }
   return `
@@ -1966,7 +2001,7 @@ function npPanelHTML(file, seg) {
       <button class="lrc-line" data-act="np-seek" data-t="${l.time}" data-i="${i}">
         <span class="orig">${esc(l.orig)}</span>${l.trans ? `<span class="trans">${esc(l.trans)}</span>` : ''}
       </button>`).join('')}</div>`
-      : `<div class="lrc-empty">${p.plainLyrics ? esc(p.plainLyrics) : '이 곡에는 타임싱크 자막이 없어요.'}</div>`}`;
+      : `<div class="lrc-empty">${p.plainLyrics ? esc(p.plainLyrics) : '이 보이스에는 타임싱크 자막이 없어요.'}</div>`}`;
 }
 
 function renderNowPanel(file, seg) {
@@ -1979,7 +2014,7 @@ function renderNowPanel(file, seg) {
 }
 
 function openCoverView(url) {
-  if (!url) { toast('이 곡에는 앨범 커버가 없어요'); return; }
+  if (!url) { toast('이 보이스에는 앨범 커버가 없어요'); return; }
   const ov = document.createElement('div');
   ov.className = 'coverview';
   ov.innerHTML = `<img src="${url}" alt="앨범 커버" /><button type="button" class="cv-x" aria-label="닫기"><svg><use href="#i-close"/></svg></button>`;
@@ -1988,7 +2023,7 @@ function openCoverView(url) {
 }
 
 function openNowPlaying() {
-  if (!player?.current) { toast('재생 중인 곡이 없어요'); return; }
+  if (!player?.current) { toast('재생 중인 보이스가 없어요'); return; }
   const file = player.current;
   const p = currentParsed(file);
   const tags = tagsOf(file);
@@ -2001,7 +2036,7 @@ function openNowPlaying() {
   const body = openSheet(eyebrow, `
     <div class="np">
       <div class="np-hero">
-        <button type="button" class="np-cover" id="npCover" data-act="np-cover" aria-label="앨범 커버 크게 보기">${p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</button>
+        <button type="button" class="np-cover" id="npCover" data-act="np-cover" aria-label="앨범 커버 크게 보기">${coverOf(file).thumb ? `<img src="${coverOf(file).thumb}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</button>
         <div class="np-head">
           <div class="np-info">
             <div class="np-title" id="npTitle">${esc(p.title || displayName(file.name))}</div>
@@ -2021,11 +2056,11 @@ function openNowPlaying() {
         <div class="np-times"><span id="npCur">00:00</span><span id="npDur">-00:00</span></div>
       </div>
       <div class="np-ctrl">
-        <button type="button" data-act="np-prev" aria-label="이전 곡"><svg><use href="#i-prev"/></svg></button>
+        <button type="button" data-act="np-prev" aria-label="이전 보이스"><svg><use href="#i-prev"/></svg></button>
         <button type="button" data-act="np-back10" aria-label="10초 뒤로"><svg><use href="#i-back10"/></svg></button>
         <button type="button" class="np-play" id="npPlay" data-act="np-play" aria-label="재생/일시정지"><svg><use href="${player.isPlaying ? '#i-pause' : '#i-play'}"/></svg></button>
         <button type="button" data-act="np-fwd10" aria-label="10초 앞으로"><svg><use href="#i-fwd10"/></svg></button>
-        <button type="button" data-act="np-next" aria-label="다음 곡"><svg><use href="#i-next"/></svg></button>
+        <button type="button" data-act="np-next" aria-label="다음 보이스"><svg><use href="#i-next"/></svg></button>
       </div>
       <div class="np-pills">
         <button type="button" class="np-pill ${player.shuffle ? 'is-on' : ''}" id="npShuffle" data-act="np-shuffle"><svg><use href="#i-shuffle"/></svg>셔플</button>
@@ -2116,7 +2151,7 @@ function openNowPlaying() {
       return;
     }
     if (act === 'np-cover' || act === 'np-art') {
-      openCoverView(currentParsed(file).coverUrl);
+      openCoverView(coverOf(file).full || coverOf(file).thumb);
       return;
     }
     if (act === 'np-play') { if (player.current?.id === file.id) player.toggle(); else playFile(file); return; }
@@ -2247,7 +2282,7 @@ function updateNowSheet(st) {
   if (sub) sub.textContent = [p.artist, p.album].filter(Boolean).join(' · ') || cur.liver || '';
   const cov = $('#npCover');
   if (cov) {
-    const url = p.coverUrl || '';
+    const url = coverOf(cur).thumb || '';
     const img = cov.querySelector('img');
     if (url && (!img || img.getAttribute('src') !== url)) cov.innerHTML = `<img src="${url}" alt="" />`;
     else if (!url && !img) cov.innerHTML = '<svg><use href="#i-mic"/></svg>';
@@ -2255,7 +2290,7 @@ function updateNowSheet(st) {
 }
 
 function cycleABWithToast() {
-  if (!player?.current) { toast('먼저 곡을 재생해 주세요.'); return; }
+  if (!player?.current) { toast('먼저 보이스를 재생해 주세요.'); return; }
   const r = player.cycleAB();
   if (r.step === 'a') toast(`A 지점 ${fmtTime(r.t)} — 끝 지점에서 한 번 더 누르세요`);
   else if (r.step === 'b') toast(`A–B 반복 ${fmtTime(player.ab.a)} ~ ${fmtTime(player.ab.b)}`);
@@ -2351,7 +2386,7 @@ function openPlaylistPicker(fileIds) {
     ${personal.playlists.map((p) => `<button class="pl-row" data-act="pick" data-id="${esc(p.id)}">
       <span class="pl-ico"><svg><use href="#i-list"/></svg></span>
       <span class="pl-name">${esc(p.name)}</span>
-      <span class="pl-count">${p.fileIds.length}곡</span>
+      <span class="pl-count">${p.fileIds.length}개</span>
     </button>`).join('') || '<div class="note">아직 재생목록이 없어요.</div>'}
     <div class="field" style="margin-top:14px">
       <label>새 재생목록</label>
@@ -2370,7 +2405,7 @@ function openPlaylistPicker(fileIds) {
       let added = 0;
       for (const id of ids) if (!pl.fileIds.includes(id)) { pl.fileIds.push(id); added += 1; }
       saveJSON(PERSONAL_KEY, personal);
-      toast(`${pl.name}에 ${added}곡을 담았어요`);
+      toast(`${pl.name}에 ${added}개를 담았어요`);
       closeSheet();
       renderList();
     }
@@ -2390,7 +2425,7 @@ function openPlaylistPicker(fileIds) {
 function openMoreSheet(file, { playlist = false } = {}) {
   ui.sheet = 'more';
   const p = currentParsed(file);
-  const cover = p.coverUrl || '';
+  const cover = coverOf(file).thumb || '';
   const saved = offlineIds.has(file.id);
   const notes = shared.notesOf(file.id).length;
   const tags = tagsOf(file);
@@ -2433,7 +2468,7 @@ function openMoreSheet(file, { playlist = false } = {}) {
     </button>` : ''}
     <button type="button" class="act-item" data-act="m-play">
       <span class="ai"><svg><use href="${isCurrent ? '#i-pause' : '#i-play'}"/></svg></span>
-      <span class="al">${isCurrent ? '재생 / 일시정지' : '이 곡 재생'}</span>
+      <span class="al">${isCurrent ? '재생 / 일시정지' : '이 보이스 재생'}</span>
     </button>
   `);
 
@@ -2471,9 +2506,9 @@ function removeFromPlaylist(fileId) {
 
 /* ─────────────────────────── offline ─────────────────────────── */
 async function toggleOffline(file) {
-  if (file.demo) { toast('데모 곡은 이미 오프라인에서 재생돼요.'); return; }
+  if (file.demo) { toast('데모 보이스는 이미 오프라인에서 재생돼요.'); return; }
   if (offlineIds.has(file.id)) {
-    if (!confirm('이 곡의 오프라인 저장을 지울까요?')) return;
+    if (!confirm('이 보이스의 오프라인 저장을 지울까요?')) return;
     await db.del('audio', file.id);
     offlineIds.delete(file.id);
     toast('오프라인 저장을 지웠어요');
@@ -2624,7 +2659,7 @@ function bindEvents() {
     const b = $('#btnOffline');
     if (b) b.classList.toggle('is-on', state.offlineOnly);
     renderList();
-    toast(state.offlineOnly ? '오프라인 저장한 곡만 보여드려요' : '저장한 곡을 모두 보여드려요');
+    toast(state.offlineOnly ? '오프라인 저장한 보이스만 보여드려요' : '저장한 보이스를 모두 보여드려요');
   });
   on('#btnShuffleAll', 'click', () => {
     const files = visibleFiles();
@@ -2633,7 +2668,7 @@ function bindEvents() {
     const start = Math.floor(Math.random() * files.length);
     player.playFiles(files, start);
     renderControlbar();
-    toast(`${files.length}곡을 섞어서 재생해요`);
+    toast(`${files.length}개를 섞어서 재생해요`);
   });
   on('#btnPlayAll', 'click', () => {
     let files = visibleFiles();
@@ -2642,7 +2677,7 @@ function bindEvents() {
     }
     if (!files.length) { toast('재생할 파일이 없어요.'); return; }
     player.playFiles(files, 0);
-    toast(`${files.length}곡 재생 시작`);
+    toast(`${files.length}개 재생 시작`);
   });
 
   $('#listArea').addEventListener('click', onListClick);
@@ -2770,11 +2805,29 @@ function onListClick(e) {
     return;
   }
   if (act === 'close-series') { state.openSeries = null; renderList(); return; }
+  if (act === 'series-move') {
+    const dir = Number(action.dataset.dir) || 0;
+    if (!dir || !state.openSeries) return;
+    const { groups } = collectionGroups(state.collectionLiver);
+    const idx = groups.findIndex((g) => g.title === state.openSeries.title);
+    const target = groups[idx + dir];
+    if (!target) return;
+    state.openSeries = { title: target.title, ids: target.files.map((f) => f.id) };
+    renderList();
+    const sc = $('#scroller');
+    if (sc) sc.scrollTo({ top: 0 });
+    return;
+  }
+  if (act === 'series-offline') {
+    offlineMany((state.openSeries?.ids || []).map(fileById).filter(Boolean));
+    return;
+  }
+  if (act === 'series-more') { openSeriesSheet(); return; }
   if (act === 'series-play') {
     const list = (state.openSeries?.ids || []).map(fileById).filter(Boolean);
-    if (!list.length) { toast('재생할 곡이 없어요.'); return; }
+    if (!list.length) { toast('재생할 보이스가 없어요.'); return; }
     player.playFiles(list, 0);
-    toast(`${list.length}곡 재생 시작`);
+    toast(`${list.length}개 재생 시작`);
     return;
   }
   if (act === 'folder-mode') {
@@ -2830,7 +2883,7 @@ function onListClick(e) {
   if (act === 'pl-play') {
     const pl = personal.playlists.find((p) => p.id === state.openPlaylistId);
     const files = (pl?.fileIds || []).map(fileById).filter(Boolean);
-    if (!files.length) { toast('재생할 곡이 없어요.'); return; }
+    if (!files.length) { toast('재생할 보이스가 없어요.'); return; }
     player.playFiles(files, 0);
     return;
   }
@@ -2989,7 +3042,8 @@ function restoreLast() {
   if (s) s.textContent = [f.liver, f.year].filter(Boolean).join(' · ');
   loadParsed(f, { network: drive.connected }).then((p) => {
     const th = $('#pThumb');
-    if (p?.coverUrl && th) th.innerHTML = `<img src="${p.coverUrl}" alt="" />`;
+    const cv = coverOf(f);
+    if (cv.thumb && th) th.innerHTML = `<img src="${cv.thumb}" alt="" />`;
     const tt = $('#pTitle');
     if (p?.title && tt) tt.textContent = p.title;
   }).catch(() => {});
