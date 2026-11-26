@@ -804,6 +804,49 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 .hit .hit-file { font-size: 10.5px; color: var(--faint); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hit mark { background: color-mix(in srgb, var(--accent) 18%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 
+/* ───────── 재생 목록(대기열) ───────── */
+.q-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 2px 8px;
+}
+.q-head .q-count { flex: 1 1 auto; font-size: 11px; color: var(--faint); }
+.q-list { position: relative; }
+.q-row {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface);
+  border-radius: var(--r);
+  touch-action: pan-y;
+  will-change: transform;
+}
+.q-row .hit { border-bottom: 0; flex: 1 1 auto; min-width: 0; }
+.q-row + .q-row .hit { border-top: 1px solid var(--line); }
+.q-row.is-cur .hit-orig { color: var(--accent); font-weight: 700; }
+.q-row.will-remove { background: color-mix(in srgb, #e5484d 12%, var(--surface)); }
+.q-row .q-rm {
+  flex: 0 0 auto; width: 34px; height: 34px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; color: var(--faint);
+  background: var(--fill);
+}
+.q-row .q-rm svg { width: 15px; height: 15px; }
+.q-row .q-check {
+  flex: 0 0 auto; width: 22px; height: 22px; margin-left: 6px;
+  border-radius: 50%; border: 1.5px solid var(--line);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: transparent;
+}
+.q-row .q-check svg { width: 13px; height: 13px; }
+.q-row .q-check.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.q-bar {
+  position: sticky; bottom: 0;
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; padding: 10px 2px;
+  background: linear-gradient(to top, var(--surface) 70%, transparent);
+}
+.q-bar .btn-primary { flex: 1 1 auto; }
+.q-bar .btn-primary[disabled] { opacity: .45; }
+
 .indexbar {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: 12px;

@@ -2195,7 +2195,7 @@ function syncCardStates() {
 }
 
 /* ─────────────────────────── sheets ─────────────────────────── */
-const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics', panelKey: '', stack: [] };
+const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics', panelKey: '', stack: [], queueSel: new Set(), queueSelect: false };
 
 function openSheet(title, html, { tall = false, full = false } = {}) {
   const sheetEl = $('#sheet');
@@ -3280,26 +3280,144 @@ function updateNowLyric(time) {
   }
 }
 
-/* queue */
+/* queue — 대기열에서 곡을 빼고, 고르고, 옮길 수 있다 */
 function openQueue() {
   ui.sheet = 'queue';
-  const q = player?.queue || [];
-  const body = openSheet(`재생 목록 (${q.length})`, q.length ? q.map((f, i) => `
-    <button class="hit" data-act="q-play" data-i="${i}">
-      <span class="memo-time">${i + 1}</span>
-      <span class="hit-line">
-        <span class="hit-orig" style="${player?.current?.id === f.id ? 'color:var(--accent)' : ''}">${esc(displayTitleOf(f))}</span>
-        <span class="hit-file">${esc([f.liver, f.year].filter(Boolean).join(' · '))}</span>
-      </span>
-    </button>`).join('') : '<div class="lrc-empty">재생 목록이 비어 있어요.</div>', { tall: true });
+  ui.queueSel = ui.queueSel || new Set();
+  ui.queueSel.clear();
+  ui.queueSelect = false;
+  const body = openSheet('재생 목록', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
+
+  const dropAt = (indexes) => {
+    if (!player || !indexes.length) return;
+    player.removeMany(indexes);
+    ui.queueSel.clear();
+    render();
+    refreshNowSheet();
+    renderList();
+    if (!player.queue.length) toast('재생 목록이 비었어요 — 지금 곡은 계속 재생돼요');
+  };
+
+  const bindSwipe = () => {
+    for (const row of body.querySelectorAll('.q-row')) {
+      let sx = 0, sy = 0, dx = 0, dy = 0, active = false, horiz = false;
+      row.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.q-rm, .q-check')) return;
+        sx = e.clientX; sy = e.clientY; dx = dy = 0;
+        active = true; horiz = false;
+        row.style.transition = 'none';
+      });
+      row.addEventListener('pointermove', (e) => {
+        if (!active) return;
+        dx = e.clientX - sx; dy = e.clientY - sy;
+        if (!horiz) {
+          if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { active = false; row.style.transform = ''; return; }
+          if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) horiz = true;
+          else return;
+        }
+        row.style.transform = `translateX(${Math.min(0, Math.max(-110, dx))}px)`;
+        row.classList.toggle('will-remove', dx < -64);
+      });
+      const finish = () => {
+        if (!active) return;
+        active = false;
+        if (horiz && dx < -64) {
+          row.style.transition = 'transform .16s ease, opacity .16s ease';
+          row.style.transform = 'translateX(-100%)';
+          row.style.opacity = '0';
+          const i = Number(row.dataset.i);
+          setTimeout(() => dropAt([i]), 150);
+          return;
+        }
+        row.style.transition = 'transform .2s ease';
+        row.style.transform = '';
+        row.classList.remove('will-remove');
+      };
+      row.addEventListener('pointerup', finish);
+      row.addEventListener('pointercancel', finish);
+    }
+  };
+
+  const render = () => {
+    const q = player?.queue || [];
+    if (!q.length) {
+      $('#sheetTitle').textContent = '재생 목록';
+      body.innerHTML = '<div class="lrc-empty">재생 목록이 비어 있어요.<br>보이스를 길게 눌러 바로 재생하면 여기에 쌓여요.</div>';
+      return;
+    }
+    const sel = ui.queueSel;
+    $('#sheetTitle').textContent = ui.queueSelect
+      ? `재생 목록 · ${sel.size}개 선택`
+      : `재생 목록 (${q.length})`;
+    body.innerHTML = `
+      <div class="q-head">
+        <span class="q-count">${q.length}곡 · 왼쪽으로 밀면 빼요</span>
+        <button type="button" class="mini ${ui.queueSelect ? 'has-content' : ''}" data-qact="sel">${ui.queueSelect ? '그만 고르기' : '선택'}</button>
+      </div>
+      <div class="q-list">
+        ${q.map((f, i) => `
+          <div class="q-row ${player?.current?.id === f.id ? 'is-cur' : ''}" data-i="${i}">
+            ${ui.queueSelect ? `<button type="button" class="q-check ${sel.has(i) ? 'is-on' : ''}" data-qact="pick" data-i="${i}" aria-label="고르기"><svg><use href="#i-check"/></svg></button>` : ''}
+            <button type="button" class="hit" data-qact="play" data-i="${i}">
+              <span class="memo-time">${i + 1}</span>
+              <span class="hit-line">
+                <span class="hit-orig">${esc(displayTitleOf(f))}</span>
+                <span class="hit-file">${esc([f.liver, f.year].filter(Boolean).join(' · '))}</span>
+              </span>
+            </button>
+            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="대기열에서 빼기"><svg><use href="#i-close"/></svg></button>`}
+          </div>`).join('')}
+      </div>
+      ${ui.queueSelect ? `
+        <div class="q-bar">
+          <button type="button" class="mini" data-qact="all">${sel.size === q.length ? '전체 해제' : '전체 선택'}</button>
+          <button type="button" class="btn-primary" data-qact="drop" ${sel.size ? '' : 'disabled'}>선택한 ${sel.size}곡 빼기</button>
+        </div>` : ''}
+    `;
+    bindSwipe();
+  };
+
   body.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-act="q-play"]');
+    const b = e.target.closest('[data-qact]');
     if (!b) return;
+    const act = b.dataset.qact;
     const i = Number(b.dataset.i);
-    player.index = i;
-    player.load(player.queue[i]);
-    closeSheet();
+    if (act === 'play') {
+      if (!player?.queue[i]) return;
+      player.index = i;
+      player.load(player.queue[i]);
+      closeSheet();
+      return;
+    }
+    if (act === 'sel') {
+      ui.queueSelect = !ui.queueSelect;
+      ui.queueSel.clear();
+      render();
+      return;
+    }
+    if (act === 'pick') {
+      if (ui.queueSel.has(i)) ui.queueSel.delete(i); else ui.queueSel.add(i);
+      render();
+      return;
+    }
+    if (act === 'all') {
+      const q = player?.queue || [];
+      if (ui.queueSel.size === q.length) ui.queueSel.clear();
+      else q.forEach((_, idx) => ui.queueSel.add(idx));
+      render();
+      return;
+    }
+    if (act === 'rm') { dropAt([i]); return; }
+    if (act === 'drop') {
+      const idx = [...ui.queueSel];
+      if (!idx.length) return;
+      dropAt(idx);
+      ui.queueSelect = false;
+      render();
+    }
   });
+
+  render();
 }
 
 /* sleep timer */
@@ -3665,6 +3783,9 @@ function bindEvents() {
   $('#scroller').addEventListener('scroll', () => {
     const hdr = $('.hdr');
     if (hdr) hdr.classList.toggle('is-scrolled', $('#scroller').scrollTop > 4);
+    // 스크롤·스와이프로 새로 보이는 타일의 커버를 알아서 불러온다
+    clearTimeout(coverScanTimer);
+    coverScanTimer = setTimeout(scanCovers, 120);
   }, { passive: true });
 
   document.addEventListener('visibilitychange', () => {

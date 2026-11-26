@@ -71,6 +71,33 @@ export class Player {
     this.index = startIndex >= 0 && startIndex < files.length ? startIndex : -1;
   }
 
+  /** 대기열에서 한 곡을 뺀다 — 재생 중인 곡을 빼도 소리는 그대로 이어 간다 */
+  removeAt(i) {
+    if (!(i >= 0 && i < this.queue.length)) return false;
+    const curId = this.current?.id || null;
+    const [removed] = this.queue.splice(i, 1);
+    if (curId && removed?.id === curId) {
+      // 지금 듣던 곡을 뺐다: 소리는 유지하고, 다음 곡은 이 자리 다음부터
+      this.index = i - 1;
+    } else if (curId) {
+      const ni = this.queue.findIndex((f) => f.id === curId);
+      if (ni >= 0) this.index = ni;
+      else if (this.index >= i) this.index = Math.max(0, this.index - 1);
+    } else if (this.index >= i) {
+      this.index = Math.max(-1, this.index - 1);
+    }
+    this.emit();
+    return removed;
+  }
+
+  /** 여러 곡을 한꺼번에 뺀다 (인덱스 배열) */
+  removeMany(indexes) {
+    const sorted = [...new Set(indexes)].sort((a, b) => b - a);
+    let last = null;
+    for (const i of sorted) last = this.removeAt(i) || last;
+    return last;
+  }
+
   playFiles(files, startIndex = 0, { startAt = 0 } = {}) {
     if (!files.length) return;
     this.setQueue(files, startIndex);
