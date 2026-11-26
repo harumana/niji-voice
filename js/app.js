@@ -1142,17 +1142,35 @@ function liverShort(name) {
   return m ? m[1] : String(name || '');
 }
 
-/** quick liver switcher across the top of the collection */
-function liverChipBar() {
-  const available = collectLivers();
-  if (available.length < 2) return '';
-  const cur = currentLiver(available);
-  return `<div class="liver-chips" role="tablist" aria-label="라이버 선택">${available
-    .map(([name, n]) => `<button type="button" role="tab" aria-selected="${name === cur}" class="liver-chip ${name === cur ? 'is-on' : ''}" data-act="sel-liver" data-liver="${esc(name)}">
-      <span class="chip-av" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
-      <span class="chip-name">${esc(liverShort(name))}</span>
-      <span class="chip-n">${n}</span>
-    </button>`).join('')}</div>`;
+/** favorite livers, in the order the user pinned them */
+function favLivers() {
+  const set = new Set(collectLivers().map(([name]) => name));
+  return (personal.favLivers || []).filter((name) => set.has(name));
+}
+
+function isFavLiver(name) { return (personal.favLivers || []).includes(name); }
+
+function setFavLiver(name, on) {
+  const list = (personal.favLivers || []).filter((n) => n !== name);
+  personal.favLivers = on ? [name, ...list] : list;
+  saveJSON(PERSONAL_KEY, personal);
+}
+
+/** the pinned livers, shown above everything else in the collection */
+function favLiverStrip(cur) {
+  const names = favLivers();
+  if (!names.length) return '';
+  return `<div class="fav-strip-wrap">
+    <div class="fav-strip-head">즐겨찾기 라이버</div>
+    <div class="fav-strip">${names.map((name) => {
+      const n = state.files.filter((f) => (f.liver || '기타') === name).length;
+      return `<button type="button" class="fav-liver ${name === cur ? 'is-on' : ''}" data-act="sel-liver" data-liver="${esc(name)}">
+        <span class="fl-av" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
+        <span class="fl-name">${esc(liverShort(name))}</span>
+        <span class="fl-n">${n}</span>
+      </button>`;
+    }).join('')}</div>
+  </div>`;
 }
 
 /** the one liver the collection is showing */
@@ -1189,6 +1207,7 @@ function renderCollection() {
           <span class="lib-name">${esc(livers[0][0])}</span>
           <span class="lib-sub">시리즈 ${flat.length}개 · 보이스 ${totalFiles}개</span>
         </span>
+        <span class="lib-fav ${isFavLiver(livers[0][0]) ? 'is-on' : ''}" data-act="fav-liver" data-liver="${esc(livers[0][0])}" role="button" aria-label="이 라이버 즐겨찾기"><svg><use href="${isFavLiver(livers[0][0]) ? '#i-star-fill' : '#i-star'}"/></svg></span>
         <span class="lib-change">라이버 변경</span>
       </button>`
     : `<div class="lib-card multi" data-act="pick-liver" role="button" tabindex="0">
@@ -1210,7 +1229,12 @@ function renderCollection() {
     return `<section class="col-section">${heading}${blocks}</section>`;
   }).join('');
 
-  area.innerHTML = folderModeBar('collection', totalFiles) + liverChipBar() + head + sections;
+  const cur = livers[0][0];
+  const favHere = state.files.filter((f) => (f.liver || '기타') === cur && isFav(f.id));
+  const favBlock = favHere.length ? `<div class="col-year fav-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
+    <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
+
+  area.innerHTML = folderModeBar('collection', totalFiles) + favLiverStrip(cur) + head + favBlock + sections;
   $('#listFoot').textContent = '';
   prefetchSeriesCovers(flat);
 }
@@ -3086,6 +3110,15 @@ function onListClick(e) {
   if (act === 'demo') { useDemo(); return; }
   if (act === 'select-mode') { toggleSelectMode(); return; }
   if (act === 'pick-liver') { openLiverSheet(); return; }
+  if (act === 'fav-liver') {
+    const name = action.dataset.liver || '';
+    if (!name) return;
+    const on = !isFavLiver(name);
+    setFavLiver(name, on);
+    renderList();
+    toast(on ? `${liverShort(name)} 라이버를 즐겨찾기에 두었어요` : '즐겨찾기에서 뺐어요');
+    return;
+  }
   if (act === 'sel-liver') {
     const name = action.dataset.liver || '';
     if (!name) return;
