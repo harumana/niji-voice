@@ -1124,6 +1124,14 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 .np-meta { flex: 0 0 auto; width: 100%; text-align: center; padding: 0 4px 2px; }
 .np-meta-text { min-width: 0; flex: 1 1 auto; }
 .np-title-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.np-trk {
+  flex: 0 0 auto;
+  font-size: 10.5px; font-weight: 800; letter-spacing: -.01em;
+  color: var(--text-2); background: var(--chip, rgba(0,0,0,.06));
+  border-radius: 6px; padding: 2px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.np-trk[hidden] { display: none; }
 .np-meta .np-title { text-align: center; }
 .np-meta .np-sub { text-align: center; }
 .np-meta .np-tags { justify-content: center; }

@@ -3060,6 +3060,7 @@ function openNowPlaying() {
         </button>
         <div class="np-meta-text">
         <div class="np-title-row">
+          <span class="np-trk" id="npTrk" title="트랙 번호">${esc(trackNoFor(file))}</span>
           <div class="np-title" id="npTitle">${esc(displayTitleOf(file))}</div>
           <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
             <svg><use href="${isFav(file.id) ? '#i-star-fill' : '#i-star'}"/></svg>
@@ -3304,8 +3305,19 @@ function updateNowSheet(st) {
   if (sl) sl.classList.toggle('is-on', !!st.sleep.mode);
   const title = $('#npTitle');
   if (title) title.textContent = displayTitleOf(cur);
+  const trk = $('#npTrk');
+  if (trk) {
+    const no = trackNoFor(cur);
+    trk.textContent = no ? `No.${no}` : '';
+    trk.hidden = !no;
+  }
   const sub = $('#npSub');
-  if (sub) sub.textContent = [p.artist, p.album].filter(Boolean).join(' · ') || cur.liver || '';
+  if (sub) {
+    const bits = [p.artist, p.album].filter(Boolean);
+    const qi = player?.queue?.length > 1 ? player.queue.findIndex((f) => f.id === cur.id) + 1 : 0;
+    if (qi) bits.push(`${qi} / ${player.queue.length}`);
+    sub.textContent = bits.join(' · ') || cur.liver || '';
+  }
   const cov = $('#npCover');
   if (cov) {
     const url = coverOf(cur).thumb || '';
