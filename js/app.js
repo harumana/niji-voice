@@ -694,7 +694,7 @@ function visibleFiles() {
   }
   const { year, liver, tag } = state.filters;
   if (year.size) list = list.filter((f) => f.year && year.has(f.year));
-  if (liver.size) list = list.filter((f) => liver.has(f.liver));
+  if (liver.size) list = list.filter((f) => liversOf(f).some((l) => liver.has(l)));
   if (tag.size) list = list.filter((f) => { const ts = tagsOf(f); return [...tag].every((t) => ts.includes(t)); });
   if (state.offlineOnly) list = list.filter((f) => offlineIds.has(f.id));
   list = list.slice();
@@ -778,7 +778,7 @@ function renderTabs() {
 
 function filterFacets() {
   const years = [...new Set(state.files.map((f) => f.year).filter(Boolean))].sort().reverse();
-  const livers = [...new Set(state.files.map((f) => f.liver).filter(Boolean))]
+  const livers = [...new Set(state.files.flatMap((f) => liversOf(f)).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
   const tagCount = new Map();
   for (const f of state.files) for (const t of tagsOf(f)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
@@ -788,7 +788,7 @@ function filterFacets() {
     .slice(0, 80);
   return {
     years: years.map((y) => [y, state.files.filter((f) => f.year === y).length]),
-    livers: livers.map((l) => [l, state.files.filter((f) => f.liver === l).length]),
+    livers: livers.map((l) => [l, state.files.filter((f) => liversOf(f).includes(l)).length]),
     tags,
   };
 }
@@ -804,7 +804,7 @@ function renderFilters() {
 function filterDraftCount(draft) {
   return state.files.filter((f) => {
     if (draft.year.size && !(f.year && draft.year.has(f.year))) return false;
-    if (draft.liver.size && !draft.liver.has(f.liver)) return false;
+    if (draft.liver.size && !liversOf(f).some((l) => draft.liver.has(l))) return false;
     if (draft.tag.size) {
       const ts = tagsOf(f);
       if (![...draft.tag].every((t) => ts.includes(t))) return false;
@@ -1345,8 +1345,7 @@ function paintSeries(key) {
 function collectLivers() {
   const map = new Map();
   for (const f of state.files) {
-    const liver = f.liver || '기타';
-    map.set(liver, (map.get(liver) || 0) + 1);
+    for (const liver of liversOf(f)) map.set(liver, (map.get(liver) || 0) + 1);
   }
   const rank = (name) => (isLiverName(name) ? 0 : 1);
   return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ko', { numeric: true }));
@@ -1399,6 +1398,65 @@ function isLiverName(name) {
   return true;
 }
 
+/** '緋八マナ'·'히바치 마나'·'Hibachi Mana' 같은 표기를 하나로 맞춘다 */
+function normName(x) {
+  return String(x || '').normalize('NFKC').toLowerCase().replace(/[\s_\-·・.()\[\]]/g, '');
+}
+
+const LIVER_ALIASES_EXTRA = {
+  '甲斐田晴': ['kaida haru'],
+  '緋八マナ': ['hibachi mana', 'ひばちまな'],
+  '風楽奏斗': ['fura kanato', '카나토'],
+  '魁星': ['kaisei'],
+  '酒寄颯馬': ['sakayori soma'],
+  '葛葉': ['kuzuha', '쿠즈하'],
+  '花籠つばさ': ['hanakago tsubasa'],
+  '篠宮ゆの': ['shinomiya yuno'],
+  '神永タイガ': ['kaminaga taiga', '타이가'],
+  '皇れお': ['sumeragi leo'],
+  '渚トラウト': ['nagisa trout'],
+  '榊ネス': ['sakaki ness'],
+  '山田龍一郎': ['yamada ryuichiro'],
+  '塚原大地': ['tsukahara daichi'],
+  '城瀬いすみ': ['shirose isumi'],
+  '叶': ['kanae', '카나에'],
+  '伊波ライ': ['inami rai'],
+  'エクス・アルビオ': ['ex albio'],
+};
+
+/** 라이버 표시 이름 → 비교용 별칭들 */
+function liverAliases(name) {
+  const key = liverKey(name);
+  const kr = (String(name).match(/\(([^)]+)\)\s*$/) || [])[1] || '';
+  const list = [key, kr, ...(LIVER_ALIASES_EXTRA[key] || [])];
+  return [...new Set(list.map(normName).filter(Boolean))];
+}
+
+/** 라이버 폴더 이름들 (보이스 드라마·원본 백업 같은 분류 폴더 제외) */
+function liverFolderNames() {
+  const out = new Set();
+  for (const f of state.files) {
+    const name = f.liver || '';
+    if (isLiverName(liverKey(name))) out.add(name);
+  }
+  return [...out];
+}
+
+/** 이 파일이 들어가는 라이버들 — 폴더가 분류 폴더면 메타데이터에서 참여 라이버를 찾는다 */
+function liversOf(f) {
+  if (!f) return [];
+  const own = f.liver || '기타';
+  if (isLiverName(liverKey(own))) return [own];
+  if (f._livers) return f._livers;
+  const p = parsedCache.get(f.id) || {};
+  if (!p.artist && !p.album && !f._liverTried) return [];
+  const hay = normName([p.artist, p.album, displayName(f.name), (f.path || []).slice(1).join(' ')].join(' '));
+  const hits = liverFolderNames().filter((name) => liverAliases(name).some((a) => a && hay.includes(a)));
+  f._livers = hits;
+  f._liverTried = true;
+  return hits;
+}
+
 function liverKey(name) {
   return String(name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
@@ -1448,7 +1506,7 @@ function seriesTileHTML(group) {
 
 /** group the selected liver's voices into series, kept in year sections */
 function collectionGroups(liver) {
-  const files = state.files.filter((f) => (f.liver || '기타') === liver);
+  const files = state.files.filter((f) => liversOf(f).includes(liver));
   const years = new Map();
   for (const f of files) {
     const y = f.year || '연도 미분류';
@@ -1500,7 +1558,7 @@ function favLiverStrip(cur) {
   return `<div class="fav-strip-wrap">
     <div class="fav-strip-head">즐겨 듣는 라이버</div>
     <div class="fav-strip">${names.map((name) => {
-      const n = state.files.filter((f) => (f.liver || '기타') === name).length;
+      const n = state.files.filter((f) => liversOf(f).includes(name)).length;
       return `<button type="button" class="fav-liver ${name === cur ? 'is-on' : ''}" data-act="sel-liver" data-liver="${esc(name)}">
         <span class="fl-av" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
         <span class="fl-name">${esc(liverShort(name))}</span>
@@ -1549,7 +1607,7 @@ function themeIndex() {
 function themeTileHTML(tag, files) {
   const rep = files.find((f) => f.folderCoverId) || files.find((f) => coverInfoFor(f)) || files[0];
   const cov = coverInfoFor(rep);
-  const livers = [...new Set(files.map((f) => f.liver || '기타'))];
+  const livers = [...new Set(files.flatMap((f) => liversOf(f)))];
   return `<button type="button" class="tile" data-act="open-theme" data-tag="${esc(tag)}">
     <span class="tile-cov">
       <span class="cov-box" data-cover="${esc(rep.id)}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.thumb || cov.full}" alt="" loading="lazy" />` : ''}</span>
@@ -1566,9 +1624,10 @@ function renderThemeDetail(tag) {
   if (!files.length) { state.openTheme = null; return renderCollection(); }
   const byLiver = new Map();
   for (const f of files) {
-    const k = f.liver || '기타';
-    if (!byLiver.has(k)) byLiver.set(k, []);
-    byLiver.get(k).push(f);
+    for (const k of liversOf(f)) {
+      if (!byLiver.has(k)) byLiver.set(k, []);
+      byLiver.get(k).push(f);
+    }
   }
   const compact = state.themeCompact !== false;
   const shortLiver = (n) => String(n || '기타').replace(/\s*\([^)]*\)\s*$/, '');
@@ -1667,7 +1726,7 @@ function renderCollection() {
   }).join('');
 
   const cur = livers[0][0];
-  const favHere = state.files.filter((f) => (f.liver || '기타') === cur && isFav(f.id));
+  const favHere = state.files.filter((f) => liversOf(f).includes(cur) && isFav(f.id));
   const favBlock = favHere.length ? `<div class="col-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
     <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
 
@@ -3938,7 +3997,7 @@ function bindEvents() {
     let files = visibleFiles();
     if (state.view === 'folders') {
       const liver = state.collectionLiver || personal.lastLiver || '';
-      files = state.files.filter((f) => (f.liver || '기타') === liver);
+      files = state.files.filter((f) => liversOf(f).includes(liver));
     }
     if (state.view === 'all' && state.folderMode === 'tree') {
       files = state.files.filter((f) => f.parentId === (state.folderId || state.rootId));
@@ -4193,7 +4252,7 @@ async function onListClick(e) {
   }
   if (act === 'theme-liver-play') {
     const liver = action.dataset.liver || '';
-    const list = state.files.filter((f) => (f.liver || '기타') === liver && themeOf(f).includes(state.openTheme || ''));
+    const list = state.files.filter((f) => liversOf(f).includes(liver) && themeOf(f).includes(state.openTheme || ''));
     if (!list.length) { toast('재생할 보이스가 없어요.'); return; }
     if (player.shuffle) player.setShuffle(false);
     player.playFiles(list, 0);
