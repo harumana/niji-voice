@@ -599,47 +599,112 @@ function renderTabs() {
   }
 }
 
-function renderFilters() {
+function filterFacets() {
   const years = [...new Set(state.files.map((f) => f.year).filter(Boolean))].sort().reverse();
-  const livers = [...new Set(state.files.map((f) => f.liver))].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
+  const livers = [...new Set(state.files.map((f) => f.liver).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
   const tagCount = new Map();
   for (const f of state.files) for (const t of tagsOf(f)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
-  const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+  const tags = [...tagCount.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+    .slice(0, 80);
+  return {
+    years: years.map((y) => [y, state.files.filter((f) => f.year === y).length]),
+    livers: livers.map((l) => [l, state.files.filter((f) => f.liver === l).length]),
+    tags,
+  };
+}
 
-  const opt = (key, val, label, n) =>
-    `<button type="button" class="fchip-opt ${state.filters[key].has(val) ? 'is-on' : ''}" data-fopt="${key}" data-val="${esc(val)}">${label}<span class="n">${n}</span></button>`;
-
-  $('#fpYear').innerHTML = years.map((y) => opt('year', y, esc(y), state.files.filter((f) => f.year === y).length)).join('')
-    || '<span class="note">연도 폴더가 없어요.</span>';
-  $('#fpLiver').innerHTML = livers.map((l) => opt('liver', l, esc(l), state.files.filter((f) => f.liver === l).length)).join('')
-    || '<span class="note">라이버 폴더가 없어요.</span>';
-  $('#fpTag').innerHTML = tags.slice(0, 60).map(([t, n]) => opt('tag', t, `#${esc(t)}`, n)).join('')
-    || '<span class="note">아직 태그가 없어요. 파일 카드의 “태그”로 추가해 보세요.</span>';
-
-  for (const key of ['year', 'liver', 'tag']) {
-    const chip = $(`#filters .fchip[data-open="${key}"]`);
-    const pane = $(`#fp${key.charAt(0).toUpperCase()}${key.slice(1)}`);
-    const open = state.openFilters.has(key);
-    if (chip) {
-      chip.classList.toggle('is-open', open);
-      chip.classList.toggle('is-on', state.filters[key].size > 0);
-      const badge = $('.fcount', chip);
-      const n = state.filters[key].size;
-      if (badge) { badge.hidden = !n; badge.textContent = n ? String(n) : ''; }
-    }
-    if (pane) pane.classList.toggle('is-open', open);
-  }
-
+function renderFilters() {
   const total = state.filters.year.size + state.filters.liver.size + state.filters.tag.size;
-  $('#btnClearFilters').hidden = !total;
-  $('#btnClearFilters').textContent = total ? `필터 초기화 (${total}) ✕` : '필터 초기화 ✕';
-
-  const filtersEl = $('#filters');
-  if (filtersEl) filtersEl.classList.toggle('is-open', !!state.filterBarOpen);
   const ft = $('#btnFilterToggle');
   if (ft) ft.classList.toggle('is-on', total > 0);
   const fc = $('#filterCount');
   if (fc) { fc.hidden = !total; fc.textContent = total ? String(total) : ''; }
+}
+
+function filterDraftCount(draft) {
+  return state.files.filter((f) => {
+    if (draft.year.size && !(f.year && draft.year.has(f.year))) return false;
+    if (draft.liver.size && !draft.liver.has(f.liver)) return false;
+    if (draft.tag.size) {
+      const ts = tagsOf(f);
+      if (![...draft.tag].every((t) => ts.includes(t))) return false;
+    }
+    return true;
+  }).length;
+}
+
+function openFilterSheet() {
+  ui.sheet = 'filter';
+  const draft = {
+    year: new Set(state.filters.year),
+    liver: new Set(state.filters.liver),
+    tag: new Set(state.filters.tag),
+  };
+  const facets = filterFacets();
+  const chipRow = (key, items, labelFn) => items.map(([val, n]) => `
+    <button type="button" class="chip ${draft[key].has(val) ? 'is-on' : ''}" data-fkey="${key}" data-fval="${esc(val)}">${labelFn(val)}<span class="chip-n">${n}</span></button>`).join('');
+
+  const body = openSheet('필터', `
+    <div class="fgroup">
+      <div class="flabel">연도</div>
+      <div class="chiprow">${chipRow('year', facets.years, (v) => esc(v)) || '<span class="note">연도 폴더가 없어요.</span>'}</div>
+    </div>
+    <div class="fgroup">
+      <div class="flabel">라이버</div>
+      <div class="chiprow">${chipRow('liver', facets.livers, (v) => esc(v)) || '<span class="note">라이버 폴더가 없어요.</span>'}</div>
+    </div>
+    <div class="fgroup">
+      <div class="flabel">태그</div>
+      <div class="chiprow">${chipRow('tag', facets.tags, (v) => `#${esc(v)}`) || '<span class="note">아직 태그가 없어요.</span>'}</div>
+    </div>
+    <div class="fsheet-foot">
+      <div class="fhint" id="fHint">${filterDraftCount(draft)}개 보이스</div>
+      <div class="btnrow" style="margin:0">
+        <button type="button" class="btn-secondary" data-act="f-reset">초기화</button>
+        <button type="button" class="btn-primary" data-act="f-apply">적용</button>
+      </div>
+    </div>
+  `, { tall: true });
+
+  const hint = () => {
+    const el = $('#fHint');
+    if (el) el.textContent = `${filterDraftCount(draft)}개 보이스`;
+  };
+
+  body.addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip[data-fkey]');
+    if (chip) {
+      const key = chip.dataset.fkey;
+      const val = chip.dataset.fval;
+      if (draft[key].has(val)) draft[key].delete(val); else draft[key].add(val);
+      chip.classList.toggle('is-on', draft[key].has(val));
+      hint();
+      return;
+    }
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'f-reset') {
+      draft.year.clear(); draft.liver.clear(); draft.tag.clear();
+      for (const el of $$('#sheetBody .chip[data-fkey]')) el.classList.remove('is-on');
+      state.filters.year.clear(); state.filters.liver.clear(); state.filters.tag.clear();
+      renderFilters();
+      renderList();
+      hint();
+      return;
+    }
+    if (b.dataset.act === 'f-apply') {
+      state.filters.year = new Set(draft.year);
+      state.filters.liver = new Set(draft.liver);
+      state.filters.tag = new Set(draft.tag);
+      closeSheet();
+      renderFilters();
+      renderList();
+      const total = draft.year.size + draft.liver.size + draft.tag.size;
+      if (total) toast(`필터 ${total}개를 적용했어요`);
+    }
+  });
 }
 
 function renderControlbar() {
@@ -657,7 +722,6 @@ function renderAll() {
   renderFilters();
   renderControlbar();
   const fileViews = ['all', 'fav', 'folders'];
-  $('#filters').hidden = !fileViews.includes(state.view);
   $('.controlbar').hidden = !fileViews.includes(state.view);
   renderList();
   renderSelectionBar();
@@ -2714,40 +2778,7 @@ function bindEvents() {
     $('#scroller').scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  $('#filters').addEventListener('click', (e) => {
-    const open = e.target.closest('[data-open]');
-    if (open) {
-      const key = open.dataset.open;
-      if (state.openFilters.has(key)) state.openFilters.delete(key);
-      else { state.openFilters.clear(); state.openFilters.add(key); }
-      renderFilters();
-      return;
-    }
-    const opt = e.target.closest('[data-fopt]');
-    if (opt) {
-      const key = opt.dataset.fopt;
-      const val = opt.dataset.val;
-      if (state.filters[key].has(val)) state.filters[key].delete(val); else state.filters[key].add(val);
-      renderFilters();
-      renderList();
-      return;
-    }
-    if (e.target.closest('#btnClearFilters')) {
-      state.filters.year.clear(); state.filters.liver.clear(); state.filters.tag.clear();
-      renderFilters(); renderList();
-    }
-  });
-
-  $('#btnClearFilters').addEventListener('click', () => {
-    state.filters.year.clear(); state.filters.liver.clear(); state.filters.tag.clear();
-    renderFilters(); renderList();
-  });
-
-  on('#btnFilterToggle', 'click', () => {
-    state.filterBarOpen = !state.filterBarOpen;
-    if (!state.filterBarOpen) state.openFilters.clear();
-    renderFilters();
-  });
+  on('#btnFilterToggle', 'click', openFilterSheet);
 
   $('#searchInput').addEventListener('input', debounce((e) => {
     state.search = e.target.value;
