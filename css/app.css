@@ -348,10 +348,10 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   min-height: 16px;
 }
 .sub-meta { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
-.sub-meta > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub-meta > span:first-child { flex: 0 0 auto; max-width: 46%; }
-.sub-meta > span:nth-of-type(2) { flex: 1 1 auto; }
-.sub-meta .tg { flex: 0 0 auto; max-width: 45%; }
+.sub-meta > span { flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-meta > span:first-child { max-width: 36%; }
+.sub-meta > span:nth-of-type(2) { max-width: 56%; }
+.sub-meta .tg { max-width: 42%; }
 .sub-status { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; }
 .card-sub .dot { flex: 0 0 auto; width: 2px; height: 2px; border-radius: 50%; background: var(--faint); opacity: .8; }
 .card-sub .tg { color: var(--faint); }
@@ -603,7 +603,7 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   width: 40px; height: 5px;
   border-radius: 999px;
   background: rgba(17, 24, 39, .14);
-  margin: 8px auto 4px;
+  margin: 10px auto 6px;
 }
 .sheet.is-full .sheet-head { position: relative; justify-content: center; padding: 4px 18px 0; }
 .sheet.is-full .sheet-head h2 {
