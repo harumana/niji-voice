@@ -1555,7 +1555,7 @@ function seriesTileHTML(group) {
   const playing = group.files.some((f) => player?.current?.id === f.id);
   return `<button type="button" class="tile ${playing ? 'is-playing' : ''}" data-act="open-series" data-title="${esc(group.title)}" data-ids="${esc(group.files.map((f) => f.id).join(','))}">
     <span class="tile-cov">
-      <span class="cov-box" data-cover="${esc(coverFile ? coverFile.id : '')}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.thumb || cov.full}" alt="" loading="lazy" />` : ''}</span>
+      <span class="cov-box" data-cover="${esc(coverFile ? coverFile.id : '')}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.thumb || cov.full}" alt="" loading="lazy" />` : `<span class="cov-fallback">${esc((group.title || '?').trim().charAt(0))}</span>`}</span>
       ${group.files.length > 1 ? `<span class="tile-badge">${group.files.length}</span>` : ''}
       <span class="tile-play"><svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg></span>
     </span>
