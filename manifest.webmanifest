@@ -1,0 +1,21 @@
+{
+  "name": "NIJI VOICE",
+  "short_name": "NIJI VOICE",
+  "description": "Google Drive 보이스 아카이브 전용 플레이어 — 태그, 타임스탬프 메모, 타임싱크 가사",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#f5f6fb",
+  "theme_color": "#4f56e6",
+  "categories": ["music", "entertainment", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
