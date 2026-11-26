@@ -1195,12 +1195,18 @@ function axisBar() {
   </div>`;
 }
 
-/** every tag in the library with the voices that carry it */
+/** 테마 = 시리즈명·EX·내가 단 태그. 연도와 라이버명은 테마가 아니다. */
+function themeOf(f) {
+  const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
+  return tagsOf(f).filter((t) => t && !/^\d{4}$/.test(t) && t !== '연도 미분류'
+    && t !== f.liver && t !== liverShort && !/^\d{4}_/.test(t));
+}
+
+/** every theme in the library with the voices that carry it */
 function themeIndex() {
   const map = new Map();
   for (const f of state.files) {
-    // 내가 단 태그만 — 시리즈명·연도는 라이버별 화면이 이미 보여준다
-    for (const t of (shared?.tagsOf(f.id) || [])) {
+    for (const t of themeOf(f)) {
       if (!map.has(t)) map.set(t, []);
       map.get(t).push(f);
     }
@@ -1212,27 +1218,38 @@ function themeIndex() {
 function themeTileHTML(tag, files) {
   const rep = files.find((f) => f.folderCoverId) || files.find((f) => coverInfoFor(f)) || files[0];
   const cov = coverInfoFor(rep);
+  const livers = [...new Set(files.map((f) => f.liver || '기타'))];
   return `<button type="button" class="tile" data-act="open-theme" data-tag="${esc(tag)}">
     <span class="tile-cov">
       <span class="cov-box" data-cover="${esc(rep.id)}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.thumb || cov.full}" alt="" loading="lazy" />` : ''}</span>
       <span class="tile-badge">${files.length}</span>
     </span>
     <span class="tile-name">${esc(tag)}</span>
+    <span class="tile-sub">라이버 ${livers.length}명</span>
   </button>`;
 }
 
 function renderThemeDetail(tag) {
   const area = $('#listArea');
-  const files = state.files.filter((f) => (shared?.tagsOf(f.id) || []).includes(tag));
+  const files = state.files.filter((f) => themeOf(f).includes(tag));
   if (!files.length) { state.openTheme = null; return renderCollection(); }
+  const byLiver = new Map();
+  for (const f of files) {
+    const k = f.liver || '기타';
+    if (!byLiver.has(k)) byLiver.set(k, []);
+    byLiver.get(k).push(f);
+  }
+  const blocks = [...byLiver.entries()].map(([liver, list]) => `
+    <h3 class="col-liver">${esc(liver)}<span>${list.length}</span></h3>
+    <div class="sd-tracks">${list.map((f) => cardHTML(f)).join('')}</div>`).join('');
   area.innerHTML = `
     <div class="sd-bar">
       <button type="button" class="sd-ico back" data-act="close-theme" aria-label="뒤로"><svg><use href="#i-chevron"/></svg></button>
     </div>
     <h2 class="sd-title">${esc(tag)}</h2>
-    <div class="sd-meta">보이스 ${files.length}개</div>
+    <div class="sd-meta">보이스 ${files.length}개 · 라이버 ${byLiver.size}명</div>
     <button type="button" class="sd-play" data-act="theme-play"><svg><use href="#i-play"/></svg>전체 재생</button>
-    <div class="sd-tracks">${files.map((f) => cardHTML(f)).join('')}</div>
+    ${blocks}
   `;
   $('#listFoot').textContent = '';
 }
@@ -1243,9 +1260,9 @@ function renderThemeIndex() {
   area.innerHTML = folderModeBar('collection', state.files.length) + axisBar()
     + (themes.length
       ? `<div class="col-grid">${themes.map(([tag, files]) => themeTileHTML(tag, files)).join('')}</div>`
-      : emptyHTML({ icon: '🏷', title: '아직 테마가 없어요', desc: '보이스에 태그를 달면 태그별로 모아 볼 수 있어요.' }));
+      : emptyHTML({ icon: '🏷', title: '아직 테마가 없어요', desc: '보이스 메타데이터를 읽는 중이에요. 잠시 뒤 다시 열어 주세요.' }));
   $('#listFoot').textContent = '';
-  for (const [, files] of themes.slice(0, 18)) {
+  for (const [, files] of themes.slice(0, 24)) {
     const rep = files.find((f) => f.folderCoverId) || files.find((f) => coverInfoFor(f)) || files[0];
     if (rep) queueCover(rep.id);
   }
@@ -3213,7 +3230,7 @@ function onListClick(e) {
   if (act === 'open-theme') { state.openTheme = action.dataset.tag || ''; renderList(); return; }
   if (act === 'close-theme') { state.openTheme = null; renderList(); return; }
   if (act === 'theme-play') {
-    const list = state.files.filter((f) => (shared?.tagsOf(f.id) || []).includes(state.openTheme || ''));
+    const list = state.files.filter((f) => themeOf(f).includes(state.openTheme || ''));
     if (!list.length) { toast('재생할 보이스가 없어요.'); return; }
     player.playFiles(list, 0);
     toast(`${list.length}개 재생 시작`);
