@@ -67,6 +67,56 @@ function cleanSeriesName(text, { liverShort = '', liver = '' } = {}) {
 const autoTagCache = new Map();
 
 /** stable key for "same series" cover sharing (path/name only, no ID3) */
+function exVariantOf(...sources) {
+  for (const s of sources) {
+    if (!s) continue;
+    if (/ex[\s_\-]*another/i.test(s)) return 'EX Another';
+    if (/(^|[^a-z0-9])ex([^a-z0-9]|$)/i.test(s)) return 'EX';
+  }
+  return '';
+}
+
+const normTxt = (v) => String(v || '').toLowerCase().replace(/[_\-.\s()\[\]]/g, '');
+
+/** Human title: ID3 title first, else a cleaned file name; "라이버 - 시리즈 (EX)" when both are known. */
+function displayTitleOf(f) {
+  if (!f) return '';
+  const p = parsedCache.get(f.id);
+  const id3 = (p?.title || '').trim();
+  const fileBase = displayName(f.name || '');
+  const src = id3 || fileBase;
+  const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
+  const series = seriesNameOf(f);
+  const ex = exVariantOf(id3, fileBase);
+
+  const partMatch = fileBase.match(/(track|scene|episode|ep|vol)\s*\.?\s*(\d+)/i);
+  let part = '';
+  if (partMatch) {
+    const kind = partMatch[1].toLowerCase();
+    part = `${kind === 'episode' ? 'ep' : kind} ${partMatch[2]}`;
+  }
+
+  if (series && normTxt(src).includes(normTxt(series))) {
+    const base = liverShort ? `${liverShort} - ${series}` : series;
+    const bits = [];
+    if (part && !normTxt(series).includes(normTxt(part))) bits.push(part);
+    if (ex) bits.push(ex);
+    return bits.length ? `${base} (${bits.join(', ')})` : base;
+  }
+
+  let s = src
+    .replace(/^\s*track\s*\d+\s*[_.\-\s]*/i, '')
+    .replace(/^\s*\d{1,3}\s*[_.\-\s]+/, '')
+    .replace(/[()]\s*(ex|ex another)\s*[()]/gi, ' ')
+    .replace(/_+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (liverShort) s = s.split(liverShort).join(' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/^(19|20)\d{2}\s*/, '').replace(/\s+/g, ' ').trim();
+  if (!s) s = src;
+  return ex ? `${s} (${ex})` : s;
+}
+
 function seriesKeyOf(f) {
   if (!f) return '';
   const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
@@ -759,7 +809,7 @@ function cardHTML(f, { playlist = false } = {}) {
     ${state.selectMode ? `<span class="card-sel">${selected ? '<svg><use href="#i-check"/></svg>' : ''}</span>` : ''}
     <span class="cov" data-cover="${esc(f.id)}"${cover ? ' data-painted="1"' : ''}>${cover ? `<img src="${cover}" alt="" loading="lazy" />` : '<svg><use href="#i-mic"/></svg>'}</span>
     <div class="card-body" data-act="open">
-      <div class="card-title">${esc(displayName(f.name))}</div>
+      <div class="card-title">${esc(displayTitleOf(f))}</div>
       <div class="card-sub">
         <span class="sub-meta">${meta.join('<i class="dot"></i>')}</span>
         ${status.length ? `<span class="sub-status">${status.join('')}</span>` : ''}
@@ -1051,7 +1101,7 @@ function collectionGroups(liver) {
     const title = seriesNameOf(f) || displayName(f.name);
     if (!years.has(y)) years.set(y, new Map());
     const g = years.get(y);
-    if (!g.has(title)) g.set(title, { title, year: y, files: [] });
+    if (!g.has(title)) g.set(title, { title, year: y, liver, files: [] });
     g.get(title).files.push(f);
   }
   const yearKeys = [...years.keys()].sort((a, b) => String(b).localeCompare(String(a), 'ko', { numeric: true }));
@@ -1064,6 +1114,16 @@ function collectionGroups(liver) {
   return { byYear, groups: byYear.flatMap((s) => s.groups) };
 }
 
+/** livers to show: every selected liver when filtered, else the picked one */
+function displayLivers() {
+  const available = collectLivers();
+  if (state.filters.liver.size) {
+    const picked = available.filter(([name]) => state.filters.liver.has(name));
+    if (picked.length) return picked;
+  }
+  return available;
+}
+
 function renderCollection() {
   const area = $('#listArea');
   const all = visibleFiles();
@@ -1074,43 +1134,61 @@ function renderCollection() {
     return;
   }
 
-  const livers = collectLivers();
-  const liver = currentLiver(livers);
-  state.collectionLiver = liver;
-  const { byYear, groups } = collectionGroups(liver);
+  const livers = displayLivers();
+  const single = livers.length === 1;
+  if (single) state.collectionLiver = livers[0][0];
 
-  if (state.openSeries) return renderSeriesDetail(liver, groups);
+  const groupsFor = (liver) => collectionGroups(liver);
+  const flat = livers.flatMap(([liver]) => groupsFor(liver).groups);
 
-  const files = all.filter((f) => (f.liver || '기타') === liver);
-  const hero = `
-    <button type="button" class="lib-card" data-act="pick-liver">
-      <span class="lib-avatar" style="${liverTone(liver)}">${esc(liverInitial(liver))}</span>
-      <span class="lib-meta">
-        <span class="lib-name">${esc(liver)}</span>
-        <span class="lib-sub">시리즈 ${groups.length}개 · 보이스 ${files.length}개</span>
-      </span>
-      <span class="lib-change">라이버 변경</span>
-    </button>`;
+  if (state.openSeries) return renderSeriesDetail(flat);
 
-  const sections = byYear.map((section) => `
-    <div class="col-year">${esc(section.year)}<span>${section.groups.length}</span></div>
-    <div class="col-grid">${section.groups.map(seriesTileHTML).join('')}</div>`).join('');
+  const totalFiles = livers.reduce((n, [, c]) => n + c, 0);
+  const head = single
+    ? `<button type="button" class="lib-card" data-act="pick-liver">
+        <span class="lib-avatar" style="${liverTone(livers[0][0])}">${esc(liverInitial(livers[0][0]))}</span>
+        <span class="lib-meta">
+          <span class="lib-name">${esc(livers[0][0])}</span>
+          <span class="lib-sub">시리즈 ${flat.length}개 · 보이스 ${totalFiles}개</span>
+        </span>
+        <span class="lib-change">라이버 변경</span>
+      </button>`
+    : `<div class="lib-card multi" data-act="pick-liver" role="button" tabindex="0">
+        <span class="lib-meta">
+          <span class="lib-name">라이버 ${livers.length}명</span>
+          <span class="lib-sub">시리즈 ${flat.length}개 · 보이스 ${totalFiles}개</span>
+        </span>
+        <span class="lib-change">라이버 변경</span>
+      </div>`;
 
-  area.innerHTML = folderModeBar('collection', files.length) + hero + sections;
+  const sections = livers.map(([liver]) => {
+    const { byYear, groups } = groupsFor(liver);
+    const blocks = byYear.map((section) => `
+      <div class="col-year">${esc(section.year)}<span>${section.groups.length}</span></div>
+      <div class="col-grid">${section.groups.map(seriesTileHTML).join('')}</div>`).join('');
+    const heading = single
+      ? ''
+      : `<h3 class="col-liver">${esc(liver)}<span>${groups.length} 시리즈</span></h3>`;
+    return `<section class="col-section">${heading}${blocks}</section>`;
+  }).join('');
+
+  area.innerHTML = folderModeBar('collection', totalFiles) + head + sections;
   $('#listFoot').textContent = '';
 }
 
-function renderSeriesDetail(liver, groups) {
+function renderSeriesDetail(groups) {
   const area = $('#listArea');
-  let idx = groups.findIndex((g) => g.title === state.openSeries.title);
+  let idx = groups.findIndex((g) => g.title === state.openSeries.title
+    && g.files.map((f) => f.id).join(',') === (state.openSeries.ids || []).join(','));
+  if (idx < 0) idx = groups.findIndex((g) => g.title === state.openSeries.title);
   if (idx < 0) { state.openSeries = null; return renderCollection(); }
   const group = groups[idx];
-  const ids = group.files.map((f) => f.id);
-  state.openSeries = { title: group.title, ids };
+  state.openSeries = { title: group.title, ids: group.files.map((f) => f.id) };
   const prev = groups[idx - 1] || null;
   const next = groups[idx + 1] || null;
   const coverFile = group.files.find((f) => coverInfoFor(f)) || group.files[0];
   const cov = coverInfoFor(coverFile);
+  const liver = group.liver || state.collectionLiver || '';
 
   area.innerHTML = `
     <div class="sd-bar">
@@ -1575,7 +1653,7 @@ function updatePlayerUI(st) {
   } else {
     const p = parsedCache.get(cur.id) || (cur.demo ? demoParsed(cur) : null) || {};
     const title = $('#pTitle');
-    if (title) title.textContent = p.title || displayName(cur.name);
+    if (title) title.textContent = displayTitleOf(cur);
     const bits = [];
     if (p.artist) bits.push(p.artist);
     if (st.queueLength > 1) bits.push(`${player.queue.findIndex((f) => f.id === cur.id) + 1}/${st.queueLength}`);
@@ -2233,7 +2311,7 @@ function openNowPlaying() {
         <button type="button" class="np-cover" id="npCover" data-act="np-cover" aria-label="앨범 커버 크게 보기">${coverOf(file).thumb ? `<img src="${coverOf(file).thumb}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</button>
         <div class="np-head">
           <div class="np-info">
-            <div class="np-title" id="npTitle">${esc(p.title || displayName(file.name))}</div>
+            <div class="np-title" id="npTitle">${esc(displayTitleOf(file))}</div>
             <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
             ${(file.liver || tags.length) ? `<div class="np-tags" id="npTags">
               ${file.liver ? `<button type="button" class="badge np-liver" data-act="np-liver" data-liver="${esc(file.liver)}">${esc(file.liver)}</button>` : ''}
@@ -2472,7 +2550,8 @@ function updateNowSheet(st) {
   const sl = $('#npSleep');
   if (sl) sl.classList.toggle('is-on', !!st.sleep.mode);
   const title = $('#npTitle');
-  if (title) title.textContent = p.title || displayName(cur.name);  const sub = $('#npSub');
+  if (title) title.textContent = displayTitleOf(cur);
+  const sub = $('#npSub');
   if (sub) sub.textContent = [p.artist, p.album].filter(Boolean).join(' · ') || cur.liver || '';
   const cov = $('#npCover');
   if (cov) {
@@ -2519,7 +2598,7 @@ function openQueue() {
     <button class="hit" data-act="q-play" data-i="${i}">
       <span class="memo-time">${i + 1}</span>
       <span class="hit-line">
-        <span class="hit-orig" style="${player?.current?.id === f.id ? 'color:var(--primary-ink)' : ''}">${esc(displayName(f.name))}</span>
+        <span class="hit-orig" style="${player?.current?.id === f.id ? 'color:var(--accent)' : ''}">${esc(displayTitleOf(f))}</span>
         <span class="hit-file">${esc([f.liver, f.year].filter(Boolean).join(' · '))}</span>
       </span>
     </button>`).join('') : '<div class="lrc-empty">재생 목록이 비어 있어요.</div>', { tall: true });
@@ -2628,7 +2707,7 @@ function openMoreSheet(file, { playlist = false } = {}) {
     <div class="act-head">
       <span class="act-cov">${cover ? `<img src="${cover}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</span>
       <span class="act-meta">
-        <div class="act-title">${esc(p.title || displayName(file.name))}</div>
+        <div class="act-title">${esc(displayTitleOf(file))}</div>
         <div class="act-sub">${esc([file.liver, file.year, fmtBytes(file.size)].filter(Boolean).join(' · '))}</div>
       </span>
     </div>
@@ -2969,7 +3048,7 @@ function onListClick(e) {
   if (act === 'series-move') {
     const dir = Number(action.dataset.dir) || 0;
     if (!dir || !state.openSeries) return;
-    const { groups } = collectionGroups(state.collectionLiver);
+    const groups = displayLivers().flatMap(([liver]) => collectionGroups(liver).groups);
     const idx = groups.findIndex((g) => g.title === state.openSeries.title);
     const target = groups[idx + dir];
     if (!target) return;
@@ -3198,7 +3277,7 @@ function restoreLast() {
   if (!f) return;
   player.current = f;
   const t = $('#pTitle');
-  if (t) t.textContent = displayName(f.name);
+  if (t) t.textContent = displayTitleOf(f);
   const s = $('#pSub');
   if (s) s.textContent = [f.liver, f.year].filter(Boolean).join(' · ');
   loadParsed(f, { network: drive.connected }).then((p) => {
@@ -3206,7 +3285,7 @@ function restoreLast() {
     const cv = coverOf(f);
     if (cv.thumb && th) th.innerHTML = `<img src="${cv.thumb}" alt="" />`;
     const tt = $('#pTitle');
-    if (p?.title && tt) tt.textContent = p.title;
+    if (tt) tt.textContent = displayTitleOf(f);
   }).catch(() => {});
 }
 

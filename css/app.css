@@ -823,6 +823,8 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   text-align: left;
 }
 .lib-card:active { background: var(--fill); }
+.lib-card.multi { cursor: pointer; }
+.lib-card.multi .lib-name { font-size: 13.5px; }
 .lib-avatar {
   flex: 0 0 auto;
   width: 44px; height: 44px; border-radius: 50%;
