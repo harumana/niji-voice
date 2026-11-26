@@ -198,13 +198,14 @@
     }
     if (b && b.hidden) {
       b.hidden = false;
-      b.innerHTML = '<span>앱을 불러오지 못했어요.</span>' +
+      var why = (window.__errors && window.__errors[0]) || '';
+      b.innerHTML = '<span>앱을 불러오지 못했어요.' + (why ? '<br><small>' + String(why).slice(0, 120).replace(/[<>]/g, '') + '</small>' : '') + '</span>' +
         '<button type="button" id="bootRetry">다시 시도</button>';
       var r = document.getElementById('bootRetry');
       if (r) r.addEventListener('click', function () { b.hidden = true; bootTries = 0; bootCheck(); purgeAndReload(); });
     }
   })();
 </script>
-<script type="module" src="js/app.js?v=88"></script>
+<script type="module" src="js/app.js?v=89"></script>
 </body>
 </html>
