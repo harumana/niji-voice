@@ -872,7 +872,7 @@ function renderList() {
   const summary = filterSummary();
   area.innerHTML = listHead(
     `${files.length}개 파일${summary ? ` · ${esc(summary)}` : ''} · ${sortLabel}`,
-    `${folderToggleInline()}<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button>`
+    `<span class="listhead-acts">${folderToggleInline()}<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>`
   ) + files.map((f) => cardHTML(f)).join('');
   foot.textContent = '';
 }
@@ -929,10 +929,10 @@ function folderToggle() {
 
 /** 목록 머리 오른쪽에 붙는 컴팩트 토글 */
 function folderToggleInline() {
-  return `<label class="checkmini" data-act="folder-mode" role="checkbox" aria-checked="${state.folderMode === 'tree'}">
-    <span class="checkmini-box">${state.folderMode === 'tree' ? '<svg><use href="#i-check"/></svg>' : ''}</span>
-    <span>폴더별</span>
-  </label>`;
+  const on = state.folderMode === 'tree';
+  return `<button type="button" class="mini mini-toggle ${on ? 'is-on' : ''}" data-act="folder-mode" aria-pressed="${on}">
+    <svg><use href="${on ? '#i-folder-open' : '#i-folder'}"/></svg>폴더별
+  </button>`;
 }
 
 /* ── lazy ID3 covers: one range read per series, shared by its tracks ── */
@@ -3476,7 +3476,7 @@ function onListClick(e) {
   }
   if (act === 'folder-mode') {
     const el = action.matches('input') ? action : action.querySelector('input');
-    const on = el ? !!el.checked : action.dataset.mode === 'tree';
+    const on = el ? !!el.checked : state.folderMode !== 'tree';
     state.folderMode = on ? 'tree' : 'collection';
     state.openSeries = null;
     state.openTheme = null;
