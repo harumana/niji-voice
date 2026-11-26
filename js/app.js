@@ -661,7 +661,16 @@ function visibleFiles() {
   if (tag.size) list = list.filter((f) => { const ts = tagsOf(f); return [...tag].every((t) => ts.includes(t)); });
   if (state.offlineOnly) list = list.filter((f) => offlineIds.has(f.id));
   list = list.slice();
-  if (state.sort === 'name') list.sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko'));
+  if (state.sort === 'name') {
+    // 화면에 보이는 제목 기준 — 숫자는 2 < 10 으로, 같은 시리즈 안은 트랙 번호 순
+    list.sort((a, b) => {
+      const c = displayTitleOf(a).localeCompare(displayTitleOf(b), 'ko', { numeric: true, sensitivity: 'base' });
+      if (c) return c;
+      const na = trackNoOf(a), nb = trackNoOf(b);
+      if (na && nb) return na.localeCompare(nb, 'ko', { numeric: true });
+      return displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true });
+    });
+  }
   else list.sort((a, b) => String(b.createdTime || '').localeCompare(String(a.createdTime || '')));
   return list;
 }
