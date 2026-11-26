@@ -1920,7 +1920,75 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
   $('#overlay').hidden = false;
   body.scrollTop = 0;
   document.body.style.overflow = 'hidden';
+  bindSheetSwipe(!!full);
   return body;
+}
+
+/** 위에서 아래로 쓸어내리면 시트가 내려가며 닫힌다 (미니 플레이어로 복귀) */
+function bindSheetSwipe(enabled) {
+  const sheet = $('#sheet');
+  const grab = sheet.querySelector('.sheet-grab');
+  const head = sheet.querySelector('.sheet-head');
+  if (!sheet || !grab) return;
+  sheet.style.transform = '';
+  sheet.style.transition = '';
+  if (!enabled) return;
+
+  let startY = 0, startT = 0, dy = 0, active = false;
+  const start = (e) => {
+    active = true;
+    startY = e.clientY;
+    startT = Date.now();
+    dy = 0;
+    sheet.style.transition = 'none';
+  };
+  const move = (e) => {
+    if (!active) return;
+    dy = Math.max(0, e.clientY - startY);
+    sheet.style.transform = `translateY(${dy}px)`;
+    if (dy > 4) $('#overlay').style.opacity = String(Math.max(0.15, 1 - dy / 480));
+  };
+  const end = () => {
+    if (!active) return;
+    active = false;
+    const quick = Date.now() - startT < 260 && dy > 40;
+    $('#overlay').style.opacity = '';
+    if (dy > 120 || quick) {
+      sheet.style.transition = 'transform .2s cubic-bezier(.3, .7, .3, 1)';
+      sheet.style.transform = 'translateY(110%)';
+      setTimeout(() => { closeSheet(); sheet.style.transform = ''; sheet.style.transition = ''; }, 190);
+    } else {
+      sheet.style.transition = 'transform .22s cubic-bezier(.3, .8, .3, 1.2)';
+      sheet.style.transform = '';
+    }
+  };
+  for (const el of [grab, head]) {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button.sheet-x')) return;
+      start(e);
+      el.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+    });
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  // 앨범 커버 쪽에서도 아래로 쓸면 닫힌다 (탭은 그대로 커버 크게 보기)
+  const art = sheet.querySelector('.np-art-wrap');
+  if (!art) return;
+  art.addEventListener('pointerdown', (e) => {
+    start(e);
+    art.setPointerCapture?.(e.pointerId);
+  }, { passive: true });
+  art.addEventListener('pointermove', move, { passive: true });
+  art.addEventListener('pointerup', () => {
+    if (active && dy > 12) {
+      art.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
+    }
+    end();
+  });
+  art.addEventListener('pointercancel', end);
 }
 
 function closeSheet() {
