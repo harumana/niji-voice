@@ -22,7 +22,7 @@
   --r-s: 10px;
   --r: 14px;
   --r-l: 20px;
-  --player-h: 150px;
+  --player-h: 168px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   color-scheme: light;
@@ -841,3 +841,6 @@ input, textarea, select { font: inherit; color: inherit; }
   .list { padding: 2px max(16px, calc((100% - 620px) / 2)) 0; }
   .hdr, .tabs, .filters, .controlbar { max-width: 620px; margin-left: auto; margin-right: auto; width: 100%; }
 }
+
+/* keep field-side buttons from wrapping */
+.field .row > .chip, .field .row > button { flex: 0 0 auto; white-space: nowrap; }
