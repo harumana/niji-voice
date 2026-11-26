@@ -66,6 +66,20 @@ function cleanSeriesName(text, { liverShort = '', liver = '' } = {}) {
 
 const autoTagCache = new Map();
 
+/** series / album name derived from album → folders → file name */
+function seriesNameOf(f) {
+  if (!f) return '';
+  const album = parsedCache.get(f.id)?.album || '';
+  const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
+  const opts = { liverShort, liver: f.liver || '' };
+  const sources = [album, ...(f.path || []).slice(1).reverse(), displayName(f.name || '')];
+  for (const source of sources) {
+    const name = cleanSeriesName(source, opts);
+    if (name && name !== liverShort && name !== f.year) return name;
+  }
+  return '';
+}
+
 function autoTagsOf(f) {
   if (!f) return [];
   const album = parsedCache.get(f.id)?.album || '';
@@ -74,19 +88,9 @@ function autoTagsOf(f) {
   if (hit && hit.key === key) return hit.tags;
 
   const nameBase = displayName(f.name || '');
-  const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
-  const opts = { liverShort, liver: f.liver || '' };
-
-  let series = '';
-  const sources = [album, ...(f.path || []).slice(1).reverse(), nameBase];
-  for (const source of sources) {
-    series = cleanSeriesName(source, opts);
-    if (series && series !== liverShort) break;
-    series = '';
-  }
-
   const tags = [];
-  if (series && series !== f.year) tags.push(series);
+  const series = seriesNameOf(f);
+  if (series) tags.push(series);
   if (f.year) tags.push(f.year);
   if (/(^|[\s_-])ex([\s_-]|$)|ex[\s_-]*another/i.test(nameBase)) tags.push('EX');
 
@@ -214,6 +218,7 @@ const state = {
   offlineOnly: false,
   folderMode: 'collection',
   collectionLiver: null,
+  openSeries: null,
   selectMode: false,
   selected: new Set(),
   folderId: null,
@@ -920,6 +925,21 @@ function liverTone(name) {
   return `background:hsl(${hue} 55% 95%);color:hsl(${hue} 42% 40%)`;
 }
 
+function seriesTileHTML(group) {
+  const withCover = group.files.find((f) => parsedCache.get(f.id)?.coverUrl);
+  const coverFile = withCover || group.files[0];
+  const cover = withCover ? parsedCache.get(withCover.id).coverUrl : '';
+  const playing = group.files.some((f) => player?.current?.id === f.id);
+  return `<button type="button" class="tile ${playing ? 'is-playing' : ''}" data-act="open-series" data-title="${esc(group.title)}" data-ids="${esc(group.files.map((f) => f.id).join(','))}">
+    <span class="tile-cov">
+      <span class="cov-box" data-cover="${esc(coverFile ? coverFile.id : '')}"${cover ? ' data-painted="1"' : ''}>${cover ? `<img src="${cover}" alt="" loading="lazy" />` : ''}</span>
+      ${group.files.length > 1 ? `<span class="tile-badge">${group.files.length}</span>` : ''}
+      <span class="tile-play"><svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg></span>
+    </span>
+    <span class="tile-name">${esc(group.title)}</span>
+  </button>`;
+}
+
 function renderCollection() {
   const area = $('#listArea');
   const all = visibleFiles();
@@ -933,6 +953,24 @@ function renderCollection() {
   const livers = collectLivers();
   const liver = currentLiver(livers);
   state.collectionLiver = liver;
+
+  // one series open → its track list
+  if (state.openSeries) {
+    const list = (state.openSeries.ids || []).map(fileById).filter(Boolean);
+    if (!list.length) { state.openSeries = null; return renderCollection(); }
+    area.innerHTML = `
+      <div class="colhead">
+        <button type="button" class="mini" data-act="close-series">‹ 컬렉션</button>
+        <button type="button" class="mini has-content" data-act="series-play">전체 재생</button>
+      </div>
+      <h3 class="series-title">${esc(state.openSeries.title)}</h3>
+      <p class="series-sub">${list.length}곡 · ${esc(liver)}</p>
+      ${list.map((f) => cardHTML(f)).join('')}
+    `;
+    $('#listFoot').textContent = '';
+    return;
+  }
+
   const files = all.filter((f) => (f.liver || '기타') === liver);
 
   const hero = `
@@ -940,7 +978,7 @@ function renderCollection() {
       <span class="lib-avatar" style="${liverTone(liver)}">${esc(liverInitial(liver))}</span>
       <span class="lib-meta">
         <span class="lib-name">${esc(liver)}</span>
-        <span class="lib-sub">보이스 ${files.length}개 · 라이버 ${livers.length}명</span>
+        <span class="lib-sub">시리즈 ${new Set(files.map((f) => seriesNameOf(f) || displayName(f.name))).size}개 · 보이스 ${files.length}개</span>
       </span>
       <span class="lib-change">라이버 변경</span>
     </button>`;
@@ -948,14 +986,18 @@ function renderCollection() {
   const years = new Map();
   for (const f of files) {
     const y = f.year || '기타';
-    if (!years.has(y)) years.set(y, []);
-    years.get(y).push(f);
+    const title = seriesNameOf(f) || displayName(f.name);
+    if (!years.has(y)) years.set(y, new Map());
+    const group = years.get(y);
+    if (!group.has(title)) group.set(title, { title, files: [] });
+    group.get(title).files.push(f);
   }
   const yearKeys = [...years.keys()].sort((a, b) => String(b).localeCompare(String(a), 'ko', { numeric: true }));
   const sections = yearKeys.map((year) => {
-    const list = years.get(year).slice().sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true }));
-    return `<div class="col-year">${esc(year)}<span>${list.length}</span></div>
-      <div class="col-grid">${list.map(tileHTML).join('')}</div>`;
+    const groups = [...years.get(year).values()]
+      .sort((a, b) => a.title.localeCompare(b.title, 'ko', { numeric: true }));
+    return `<div class="col-year">${esc(year)}<span>${groups.length}</span></div>
+      <div class="col-grid">${groups.map(seriesTileHTML).join('')}</div>`;
   }).join('');
 
   area.innerHTML = folderModeBar('collection', files.length) + hero + sections;
@@ -984,6 +1026,7 @@ function openLiverSheet() {
     personal.lastLiver = state.collectionLiver;
     saveJSON(PERSONAL_KEY, personal);
     state.folderMode = 'collection';
+    state.openSeries = null;
     closeSheet();
     renderList();
     const sc = $('#scroller');
@@ -1809,6 +1852,7 @@ function jumpToFilter({ tag = '', liver = '' } = {}) {
     personal.lastLiver = liver;
     saveJSON(PERSONAL_KEY, personal);
   }
+  state.openSeries = null;
   state.filterBarOpen = false;
   renderAll();
   const sc = $('#scroller');
@@ -2499,6 +2543,7 @@ function bindEvents() {
     if (!b) return;
     state.view = b.dataset.view;
     state.openPlaylistId = null;
+    state.openSeries = null;
     state.selected.clear();
     state.selectMode = false;
     renderAll();
@@ -2714,8 +2759,27 @@ function onListClick(e) {
   if (act === 'demo') { useDemo(); return; }
   if (act === 'select-mode') { toggleSelectMode(); return; }
   if (act === 'pick-liver') { openLiverSheet(); return; }
+  if (act === 'open-series') {
+    state.openSeries = {
+      title: action.dataset.title || '',
+      ids: (action.dataset.ids || '').split(',').filter(Boolean),
+    };
+    renderList();
+    const sc = $('#scroller');
+    if (sc) sc.scrollTo({ top: 0 });
+    return;
+  }
+  if (act === 'close-series') { state.openSeries = null; renderList(); return; }
+  if (act === 'series-play') {
+    const list = (state.openSeries?.ids || []).map(fileById).filter(Boolean);
+    if (!list.length) { toast('재생할 곡이 없어요.'); return; }
+    player.playFiles(list, 0);
+    toast(`${list.length}곡 재생 시작`);
+    return;
+  }
   if (act === 'folder-mode') {
     state.folderMode = action.dataset.mode === 'tree' ? 'tree' : 'collection';
+    state.openSeries = null;
     if (state.folderMode === 'tree' && !state.folderId) state.folderId = state.rootId;
     renderList();
     return;
