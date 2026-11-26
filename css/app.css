@@ -13,7 +13,7 @@
   --line-2: rgba(17, 24, 39, .10);
   --accent: #4f46e5;
   --accent-soft: #eef2ff;
-  --star: #f0a400;
+  --star: #f2477e;
   --new: #dc2626;
   --ok: #10b981;
   --warn: #f59e0b;
@@ -1569,9 +1569,9 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 .fav-liver.is-on .fl-av { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px #111827; }
 .lib-fav { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; color: var(--faint); flex: 0 0 auto; }
 .lib-fav svg { width: 19px; height: 19px; }
-.lib-fav.is-on { color: #f5a524; background: #fff7e6; }
+.lib-fav.is-on { background: #fff0f4; }
 /* 즐겨찾기 — 별만 노랗게, 글씨는 기본색 */
-.pl-gold .pl-ico { background: #fff7e6; color: var(--star); }
+.pl-gold .pl-ico { background: #fff0f4; color: var(--star); }
 .pl-row .pl-ico svg { width: 18px; height: 18px; }
 .fav-tracks { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 10px; }
 .unused-liver-chips {
