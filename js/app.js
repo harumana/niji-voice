@@ -158,7 +158,10 @@ function coverInfoFor(f) {
   if (!f) return null;
   const p = parsedCache.get(f.id);
   if (p?.thumb || p?.coverUrl) return { thumb: p.thumb || p.coverUrl, full: p.coverUrl || p.thumb };
-  return seriesCover.get(seriesKeyOf(f)) || null;
+  const s = seriesCover.get(seriesKeyOf(f));
+  if (s) return s;
+  // the cover.png sitting in the same Drive folder as the voice
+  return f.folderCover ? { thumb: f.folderCover, full: f.folderCover } : null;
 }
 
 function rememberSeriesCover(f, info) {
@@ -238,6 +241,7 @@ function saveTreeCache(tree) {
         id: f.id, name: f.name, size: f.size || 0,
         createdTime: f.createdTime, modifiedTime: f.modifiedTime,
         parentId: f.parentId, driveId: f.driveId || null,
+        folderCover: f.folderCover || null,
       })),
     }));
   } catch {}
@@ -562,7 +566,7 @@ async function syncQuietly() {
 
 function treeSignature() {
   const s = state.folders.map((f) => `${f.id}:${f.name}`).join(',') + '#'
-    + state.files.map((f) => `${f.id}:${f.name}:${f.modifiedTime || ''}:${f.parentId}`).join(',');
+    + state.files.map((f) => `${f.id}:${f.name}:${f.modifiedTime || ''}:${f.parentId}:${f.folderCover ? 1 : 0}`).join(',');
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return `${s.length}:${h}`;

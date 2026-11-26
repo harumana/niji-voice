@@ -22,6 +22,20 @@ const DRIVE_PARAMS = {
   includeItemsFromAllDrives: 'true',
 };
 
+export function isImage(file) {
+  if (!file) return false;
+  const mime = file.mimeType || '';
+  const name = String(file.name || '').toLowerCase();
+  return mime.startsWith('image/') || /\.(png|jpe?g|webp)$/.test(name);
+}
+
+/** a Drive image's own thumbnail, big enough to fill a series tile */
+export function coverUrlOf(file) {
+  const link = file && file.thumbnailLink;
+  if (!link) return null;
+  return link.replace(/=s\d+(-c)?$/, '=s640');
+}
+
 export function isAudio(file) {
   if (!file) return false;
   const mime = file.mimeType || '';
@@ -224,7 +238,7 @@ export class Drive {
     do {
       const query = qs({
         q: `'${folderId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id,name,mimeType,size,createdTime,modifiedTime,parents,driveId)',
+        fields: 'nextPageToken, files(id,name,mimeType,size,createdTime,modifiedTime,parents,driveId,thumbnailLink)',
         pageSize: '1000',
         ...DRIVE_PARAMS,
         pageToken,
@@ -262,6 +276,7 @@ export class Drive {
           if (e instanceof NeedsAuth) throw e;
           children = [];
         }
+        const img = children.find((f) => isImage(f));
         for (const f of children) {
           if (f.mimeType === FOLDER_MIME) {
             if (skipFolder && skipFolder(f.name)) continue;
@@ -277,6 +292,7 @@ export class Drive {
               modifiedTime: f.modifiedTime,
               parentId: folder.id,
               driveId: f.driveId || folder.driveId || null,
+              folderCover: img ? coverUrlOf(img) : null,
             });
           }
         }
