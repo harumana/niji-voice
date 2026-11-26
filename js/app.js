@@ -1489,6 +1489,7 @@ function liversOf(f) {
 
 /** 그룹아티스트(TPE2)로 묶이는 유닛 — 오리엔스처럼 여러 라이버가 함께 낸 보이스 */
 function unitNames() {
+  try {
   const liverNorms = new Set(liverFolderNames().flatMap(liverAliases));
   const set = new Set();
   for (const f of state.files) {
@@ -1503,6 +1504,7 @@ function unitNames() {
     }
   }
   return set;
+  } catch (e) { return new Set(); }
 }
 
 /** 이 파일이 속한 유닛들 */
