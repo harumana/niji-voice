@@ -304,6 +304,12 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .card.is-playing .card-title { color: var(--accent); }
+.card-title .trk {
+  display: inline-block; min-width: 20px; margin-right: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0;
+  color: var(--faint); font-variant-numeric: tabular-nums;
+}
+.card-title .trk:empty { display: none; }
 .card-title em {
   font-style: normal; background: color-mix(in srgb, var(--accent) 16%, transparent);
   border-radius: 3px;

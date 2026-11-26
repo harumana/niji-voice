@@ -135,6 +135,53 @@ function displayTitleOf(f, { short = false } = {}) {
   return ex ? `${s} (${ex})` : s;
 }
 
+/**
+ * 트랙 번호 — 파일명이나 ID3 제목 앞에 붙은 01·1_ 같은 숫자를 그대로 읽는다.
+ * 같은 시리즈 안에서 그 숫자가 없으면 순서로 채워 넣는다.
+ */
+function trackNoOf(f) {
+  if (!f) return '';
+  const p = parsedCache.get(f.id);
+  const sources = [displayName(f.name || ''), (p?.title || '').trim()];
+  for (const src of sources) {
+    const m = String(src || '').match(/^\s*(?:track\s*\.?\s*)?(\d{1,3})(?![\d])\s*(?:[_\-.\s)\]])/i);
+    if (m) return m[1].padStart(2, '0');
+  }
+  const m2 = String(sources[0] || '').match(/(?:track|tr|no)\.?\s*(\d{1,3})/i);
+  if (m2) return m2[1].padStart(2, '0');
+  return '';
+}
+
+/** 시리즈 안에서의 순번까지 붙인 목록 — 전체 리스트에서 몇 번째인지 알 수 있게 */
+function withTrackNos(files) {
+  const groups = new Map();
+  for (const f of files) {
+    const key = seriesKeyOf(f) || f.id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  }
+  const out = new Map();
+  for (const list of groups.values()) {
+    list.forEach((f, i) => {
+      const own = trackNoOf(f);
+      out.set(f.id, own || String(i + 1).padStart(2, '0'));
+    });
+  }
+  return out;
+}
+
+const trackNoCache = new Map();
+
+function trackNoFor(f) {
+  if (trackNoCache.has(f.id)) return trackNoCache.get(f.id);
+  return trackNoOf(f);
+}
+
+function rebuildTrackNos(files) {
+  trackNoCache.clear();
+  for (const [id, n] of withTrackNos(files)) trackNoCache.set(id, n);
+}
+
 function seriesKeyOf(f) {
   if (!f) return '';
   const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
@@ -845,7 +892,7 @@ function cardHTML(f, { playlist = false } = {}) {
     ${state.selectMode ? `<span class="card-sel">${selected ? '<svg><use href="#i-check"/></svg>' : ''}</span>` : ''}
     <span class="cov" data-cover="${esc(f.id)}"${cover ? ' data-painted="1"' : ''}>${cover ? `<img src="${cover}" alt="" loading="lazy" />` : '<svg><use href="#i-mic"/></svg>'}</span>
     <div class="card-body" data-act="open">
-      <div class="card-title">${esc(displayTitleOf(f, { short: true }))}</div>
+      <div class="card-title"><span class="trk">${esc(trackNoFor(f))}</span>${esc(displayTitleOf(f, { short: true }))}</div>
       <div class="card-sub">
         <span class="sub-meta">${meta.join('<i class="dot"></i>')}</span>
         ${status.length ? `<span class="sub-status">${status.join('')}</span>` : ''}
@@ -884,6 +931,7 @@ function emptyHTML({ icon = '🎧', title, desc, actions = '' }) {
 }
 
 function renderList() {
+  rebuildTrackNos(state.files);
   const area = $('#listArea');
   const foot = $('#listFoot');
   foot.innerHTML = '';
