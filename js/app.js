@@ -204,7 +204,11 @@ async function loadLive({ interactive = false } = {}) {
   renderHeader();
   try {
     drive.setClientId(settings.clientId);
-    await drive.ensure({ interactive });
+    if (!drive.connected) {
+      // keep the token request inside the tap so Safari doesn't block the popup
+      if (interactive && drive.tokenClient) await drive.requestToken();
+      else await drive.ensure({ interactive });
+    }
 
     if (!settings.rootId) {
       const found = await drive.findFolderByName('NIJI VOICE');
@@ -218,6 +222,7 @@ async function loadLive({ interactive = false } = {}) {
       onProgress: ({ done }) => { setConnText(`불러오는 중… (${done}개 폴더)`); },
     });
     const meta = new SharedMeta(drive, settings.rootId);
+    meta.onError = (e) => toast(`공유 메모 저장 실패: ${e?.message || e}`, { err: true, ms: 4000 });
     await meta.load();
     shared = meta;
     state.mode = 'live';
@@ -234,10 +239,12 @@ async function loadLive({ interactive = false } = {}) {
     state.mode = state.files.length ? state.mode : 'demo';
     if (e instanceof NeedsAuth) {
       state.liveError = 'auth';
-      toast('Google 계정 연결이 필요해요.', { err: true });
+      if (interactive) showConnectError(e);
+      else toast('Google 계정 연결이 필요해요.', { err: true });
     } else {
       state.liveError = e.message || 'Drive를 불러오지 못했어요.';
-      toast(state.liveError, { err: true });
+      if (interactive) showConnectError(e);
+      else toast(state.liveError, { err: true });
     }
     renderHeader();
     return false;
@@ -1017,6 +1024,8 @@ function openSettings() {
     if (act === 'disconnect') {
       drive.signOut();
       state.mode = 'demo';
+      parsedCache.clear();
+      cachedEmpty.clear();
       useDemo();
       toast('연결을 해제했어요. 데모 모드로 돌아갑니다.');
       closeSheet();
@@ -1030,6 +1039,39 @@ function openSettings() {
       db.clear('parsed').then(() => { parsedCache.clear(); cachedEmpty.clear(); toast('가사 인덱스를 지웠어요'); renderList(); closeSheet(); });
     }
     if (act === 'index-run') { closeSheet(); startIndexing(); }
+  });
+}
+
+function showConnectError(e) {
+  ui.sheet = 'diag';
+  const msg = e?.message || String(e || '알 수 없는 오류');
+  const origin = location.origin;
+  const body = openSheet('연결 진단', `
+    <div class="field">
+      <label>오류 내용</label>
+      <p class="note" style="color:var(--new);word-break:break-word">${esc(msg)}</p>
+    </div>
+    <div class="field">
+      <label>확인 목록</label>
+      <ol class="steps">
+        <li>Google Cloud 프로젝트에서 <b>Google Drive API</b>를 사용 설정했나요?</li>
+        <li>OAuth 클라이언트가 <b>웹 애플리케이션</b>이고, 승인된 JavaScript 출처에 <b>${esc(origin)}</b>가 들어 있나요?</li>
+        <li>OAuth 동의 화면의 <b>테스트 사용자</b>에 지금 접속한 Gmail을 추가했나요?</li>
+        <li>폴더 ID가 공유 드라이브 안의 <b>NIJI VOICE</b> 폴더가 맞나요?</li>
+        <li>앱을 <b>${esc(origin)}</b> 주소로 열었나요? (localhost 등 다른 주소면 출처가 다릅니다)</li>
+      </ol>
+    </div>
+    <div class="btnrow">
+      <button class="btn-primary" data-act="retry">다시 연결</button>
+      <button class="btn-secondary" data-act="to-settings">설정으로</button>
+    </div>
+    <p class="hint">연결 전에도 데모 모드로 모든 기능을 써 볼 수 있어요.</p>
+  `);
+  body.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'retry') connectFromUI();
+    if (b.dataset.act === 'to-settings') openSettings();
   });
 }
 
@@ -1857,7 +1899,8 @@ async function boot() {
   restoreLast();
 
   if (settings.clientId) {
-    // silent attempt; if Google needs a tap the header shows “다시 연결”
+    // warm up Google Identity Services so the connect tap can open the popup synchronously
+    drive.loadGis().then(() => drive.client()).catch(() => {});
     drive.restore();
     loadLive({ interactive: false }).catch(() => {});
   }

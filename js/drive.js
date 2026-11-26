@@ -415,6 +415,7 @@ export class SharedMeta {
     this.removedTags = new Map();   // fileId -> Set(tag)
     this.removedNotes = new Set();  // note ids
     this.lastError = null;
+    this.onError = null;
     this.listeners = new Set();
   }
 
@@ -448,6 +449,7 @@ export class SharedMeta {
     this.queue = this.queue.then(() => this.flush()).catch((e) => {
       this.lastError = e;
       console.warn('[meta] save failed', e);
+      try { this.onError?.(e); } catch {}
       this.emit();
     });
     return this.queue;
