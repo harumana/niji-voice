@@ -247,15 +247,23 @@ function saveTreeCache(tree) {
   } catch {}
 }
 
+/** a cache written before folder covers existed — re-list so covers appear */
+function cacheMissingCovers(data) {
+  return Array.isArray(data?.files) && data.files.length > 0
+    && data.files.some((f) => !Object.prototype.hasOwnProperty.call(f, 'folderCover'));
+}
+
 function loadTreeCache(rootId) {
   const want = rootId || settings.rootId;
   try {
     if (want) {
       const raw = localStorage.getItem(treeCacheKey(want));
       const data = raw ? JSON.parse(raw) : null;
+      if (cacheMissingCovers(data)) return null;
       return data?.root?.id && Array.isArray(data.files) ? data : null;
     }
     const best = newestCache('niji.tree.');
+    if (cacheMissingCovers(best)) return null;
     return best?.root?.id && Array.isArray(best.files) ? best : null;
   } catch { return null; }
 }
@@ -425,8 +433,9 @@ function enrich(tree) {
     const path = pathOf(f.parentId);
     f.path = path;
     f.liver = (path[0] || '기타').replace(/^\d{1,2}[_\s\-]+/, '');
-    const yearFolder = [...path].reverse().find((n) => /^(19|20)\d{2}/.test(n));
-    f.year = yearFolder ? yearFolder.slice(0, 4) : '';
+    const yearFolder = [...path].reverse().find((n) => /(19|20)\d{2}/.test(n));
+    const ym = yearFolder ? yearFolder.match(/(19|20)\d{2}/) : null;
+    f.year = ym ? ym[0] : '';
   }
 }
 
@@ -1123,14 +1132,19 @@ function collectionGroups(liver) {
   const files = state.files.filter((f) => (f.liver || '기타') === liver);
   const years = new Map();
   for (const f of files) {
-    const y = f.year || '기타';
+    const y = f.year || '연도 미분류';
     const title = seriesNameOf(f) || displayName(f.name);
     if (!years.has(y)) years.set(y, new Map());
     const g = years.get(y);
     if (!g.has(title)) g.set(title, { title, year: y, liver, files: [] });
     g.get(title).files.push(f);
   }
-  const yearKeys = [...years.keys()].sort((a, b) => String(b).localeCompare(String(a), 'ko', { numeric: true }));
+  const yearKeys = [...years.keys()].sort((a, b) => {
+    const an = /^\d{4}$/.test(a), bn = /^\d{4}$/.test(b);
+    if (an && bn) return b.localeCompare(a);
+    if (an !== bn) return an ? -1 : 1;   // 연도 미분류는 맨 끝으로
+    return String(a).localeCompare(String(b), 'ko');
+  });
   const byYear = yearKeys.map((year) => ({
     year,
     groups: [...years.get(year).values()]
