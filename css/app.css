@@ -209,7 +209,7 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 .fhint { text-align: center; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 
 /* ───────── control bar ───────── */
-.controlbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 6px; }
+.controlbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px 6px 10px; }
 .btn-playall {
   display: inline-flex; align-items: center; gap: 6px;
   height: 34px; padding: 0 15px 0 13px;
@@ -221,7 +221,8 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 }
 .btn-playall svg { width: 13px; height: 13px; }
 .btn-playall:active { transform: scale(.98); }
-.cbar-tools { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.cbar-tools { display: flex; align-items: center; gap: 2px; }
+.controlbar .btn-playall { margin-left: auto; }
 .tool {
   position: relative;
   display: grid; place-items: center;
