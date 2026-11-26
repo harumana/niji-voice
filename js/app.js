@@ -694,7 +694,7 @@ function visibleFiles() {
   }
   const { year, liver, tag } = state.filters;
   if (year.size) list = list.filter((f) => f.year && year.has(f.year));
-  if (liver.size) list = list.filter((f) => liversOf(f).some((l) => liver.has(l)));
+  if (liver.size) list = list.filter((f) => liversOf(f).concat(unitsOf(f)).some((l) => liver.has(l)));
   if (tag.size) list = list.filter((f) => { const ts = tagsOf(f); return [...tag].every((t) => ts.includes(t)); });
   if (state.offlineOnly) list = list.filter((f) => offlineIds.has(f.id));
   list = list.slice();
@@ -778,7 +778,7 @@ function renderTabs() {
 
 function filterFacets() {
   const years = [...new Set(state.files.map((f) => f.year).filter(Boolean))].sort().reverse();
-  const livers = [...new Set(state.files.flatMap((f) => liversOf(f)).filter(Boolean))]
+  const livers = [...new Set(state.files.flatMap((f) => liversOf(f).concat(unitsOf(f))).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
   const tagCount = new Map();
   for (const f of state.files) for (const t of tagsOf(f)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
@@ -788,7 +788,7 @@ function filterFacets() {
     .slice(0, 80);
   return {
     years: years.map((y) => [y, state.files.filter((f) => f.year === y).length]),
-    livers: livers.map((l) => [l, state.files.filter((f) => liversOf(f).includes(l)).length]),
+    livers: livers.map((l) => [l, state.files.filter((f) => liversOf(f).includes(l) || unitsOf(f).includes(l)).length]),
     tags,
   };
 }
@@ -804,7 +804,7 @@ function renderFilters() {
 function filterDraftCount(draft) {
   return state.files.filter((f) => {
     if (draft.year.size && !(f.year && draft.year.has(f.year))) return false;
-    if (draft.liver.size && !liversOf(f).some((l) => draft.liver.has(l))) return false;
+    if (draft.liver.size && !liversOf(f).concat(unitsOf(f)).some((l) => draft.liver.has(l))) return false;
     if (draft.tag.size) {
       const ts = tagsOf(f);
       if (![...draft.tag].every((t) => ts.includes(t))) return false;
@@ -1350,10 +1350,12 @@ function paintSeries(key) {
 
 function collectLivers() {
   const map = new Map();
+  const units = unitNames();
   for (const f of state.files) {
     for (const liver of liversOf(f)) map.set(liver, (map.get(liver) || 0) + 1);
+    for (const unit of unitsOf(f, units)) map.set(unit, (map.get(unit) || 0) + 1);
   }
-  const rank = (name) => (isLiverName(name) ? 0 : 1);
+  const rank = (name) => (units.has(name) ? 1 : isLiverName(name) ? 0 : 2);
   return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ko', { numeric: true }));
 }
 
@@ -1450,9 +1452,10 @@ async function scanCategoryLivers() {
       const before = (target._livers || []).length;
       const p = await loadParsed(target, { network: true }).catch(() => null);
       target._liverTried = false;
+      const unitsBefore = unitNames().size;
       if (p) {
         const hits = liversOf(target);
-        if (hits.length && hits.length !== before) renderList();
+        if ((hits.length && hits.length !== before) || unitNames().size !== unitsBefore) renderList();
       }
     }
   } catch {}
@@ -1482,6 +1485,32 @@ function liversOf(f) {
   f._livers = hits.length ? hits : [own];   // 참여 라이버를 못 찾으면 분류 폴더에 그대로 둔다
   f._liverTried = true;
   return hits;
+}
+
+/** 그룹아티스트(TPE2)로 묶이는 유닛 — 오리엔스처럼 여러 라이버가 함께 낸 보이스 */
+function unitNames() {
+  const liverNorms = new Set(liverFolderNames().flatMap(liverAliases));
+  const set = new Set();
+  for (const f of state.files) {
+    const u = (parsedCache.get(f.id) || {}).albumArtist;
+    if (!u) continue;
+    for (const part of String(u).split(/\s*[/,·]\s*/)) {
+      const name = part.trim();
+      if (!name) continue;
+      const n = normName(name);
+      if (!n || liverNorms.has(n)) continue;
+      set.add(name);
+    }
+  }
+  return set;
+}
+
+/** 이 파일이 속한 유닛들 */
+function unitsOf(f, units = null) {
+  const set = units || unitNames();
+  if (!set.size) return [];
+  const u = ((parsedCache.get(f.id) || {}).albumArtist || '').split(/\s*[/,·]\s*/).map((x) => x.trim()).filter(Boolean);
+  return u.filter((name) => set.has(name));
 }
 
 function liverKey(name) {
@@ -1533,7 +1562,10 @@ function seriesTileHTML(group) {
 
 /** group the selected liver's voices into series, kept in year sections */
 function collectionGroups(liver) {
-  const files = state.files.filter((f) => liversOf(f).includes(liver));
+  const units = unitNames();
+  const files = units.has(liver)
+    ? state.files.filter((f) => unitsOf(f, units).includes(liver))
+    : state.files.filter((f) => liversOf(f).includes(liver));
   const years = new Map();
   for (const f of files) {
     const y = f.year || '연도 미분류';
@@ -1585,7 +1617,7 @@ function favLiverStrip(cur) {
   return `<div class="fav-strip-wrap">
     <div class="fav-strip-head">즐겨 듣는 라이버</div>
     <div class="fav-strip">${names.map((name) => {
-      const n = state.files.filter((f) => liversOf(f).includes(name)).length;
+      const n = state.files.filter((f) => liversOf(f).includes(name) || unitsOf(f).includes(name)).length;
       return `<button type="button" class="fav-liver ${name === cur ? 'is-on' : ''}" data-act="sel-liver" data-liver="${esc(name)}">
         <span class="fl-av" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
         <span class="fl-name">${esc(liverShort(name))}</span>
@@ -1753,7 +1785,7 @@ function renderCollection() {
   }).join('');
 
   const cur = livers[0][0];
-  const favHere = state.files.filter((f) => liversOf(f).includes(cur) && isFav(f.id));
+  const favHere = state.files.filter((f) => (liversOf(f).includes(cur) || unitsOf(f).includes(cur)) && isFav(f.id));
   const favBlock = favHere.length ? `<div class="col-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
     <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
 
@@ -1821,15 +1853,17 @@ function openLiverSheet() {
   const livers = collectLivers();
   const cur = currentLiver(livers);
   ui.sheet = 'liver';
-  const body = openSheet('라이버 선택', `
-    <div class="liverlist">
-      ${livers.map(([name, n]) => `
+  const units = unitNames();
+  const row = (name, n) => `
         <button type="button" class="liver-row ${name === cur ? 'is-on' : ''}" data-act="choose-liver" data-liver="${esc(name)}">
           <span class="lib-avatar sm" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
-          <span class="liver-name">${esc(name)}</span>
+          <span class="liver-name">${esc(name)}${units.has(name) ? '<span class="liver-tag">유닛</span>' : ''}</span>
           <span class="liver-count">${n}</span>
           <span class="liver-check">${name === cur ? '<svg><use href="#i-check"/></svg>' : ''}</span>
-        </button>`).join('')}
+        </button>`;
+  const body = openSheet('라이버 선택', `
+    <div class="liverlist">
+      ${livers.map(([name, n]) => row(name, n)).join('')}
     </div>
   `, { tall: true });
   body.addEventListener('click', (e) => {
