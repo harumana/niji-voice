@@ -1541,7 +1541,12 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
   color: var(--faint); margin: 0 4px 8px;
 }
 .fav-strip-head::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
-.fav-strip { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 2px; }
+.fav-strip {
+  display: flex; gap: 10px;
+  overflow-x: auto; scrollbar-width: none;
+  padding: 7px 2px 3px;
+  margin-top: -5px;
+}
 .fav-strip::-webkit-scrollbar { display: none; }
 .fav-liver {
   flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center; gap: 6px;
