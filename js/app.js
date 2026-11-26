@@ -3336,16 +3336,24 @@ async function boot() {
     .then(() => { if (fromCache) renderList(); })
     .catch(() => {});
 
-  // 3) only a token we already hold may talk to Drive on its own.
-  //    Anything else waits for the user's tap, so no login popup on launch.
+  // 3) reconnect quietly on launch: a held token talks to Drive at once, and an
+  //    expired one is renewed without a popup when Google still remembers the user.
   if (settings.clientId) {
-    drive.loadGis().then(() => drive.client()).catch(() => {});
-    if (drive.connected) {
-      if (fromCache) syncQuietly();
-      else loadLive({ interactive: false, silent: true }).catch(() => {});
-    } else {
+    (async () => {
+      try {
+        await drive.loadGis();
+        await drive.client();
+      } catch {}
+      if (!drive.connected) {
+        try { await drive.requestToken({ prompt: '' }); } catch {}
+      }
       renderHeader();
-    }
+      if (drive.connected) {
+        if (fromCache) syncQuietly();
+        else loadLive({ interactive: false, silent: true }).catch(() => {});
+      }
+    })();
+    keepTokenFresh();
   }
 
   if ('serviceWorker' in navigator) {
@@ -3355,6 +3363,17 @@ async function boot() {
   }
   window.__appReady = true;
 }
+
+/** renew the hour-long token in the background so relaunch rarely asks again */
+function keepTokenFresh() {
+  clearInterval(freshTimer);
+  freshTimer = setInterval(async () => {
+    if (!settings.clientId || !drive.tokenClient) return;
+    if (drive.connected && drive.expiresAt - Date.now() > 10 * 60_000) return;
+    try { await drive.requestToken({ prompt: '' }); } catch {}
+  }, 5 * 60_000);
+}
+let freshTimer = 0;
 
 function restoreLast() {
   const id = personal.lastFileId;
