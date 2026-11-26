@@ -1199,7 +1199,7 @@ function axisBar() {
 function themeOf(f) {
   const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
   return tagsOf(f).filter((t) => t && !/^\d{4}$/.test(t) && t !== '연도 미분류'
-    && t !== f.liver && t !== liverShort && !/^\d{4}_/.test(t));
+    && !/^ex$/i.test(t) && t !== f.liver && t !== liverShort && !/^\d{4}_/.test(t));
 }
 
 /** every theme in the library with the voices that carry it */
