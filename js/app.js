@@ -1601,7 +1601,7 @@ function renderCollection() {
 
   const cur = livers[0][0];
   const favHere = state.files.filter((f) => (f.liver || '기타') === cur && isFav(f.id));
-  const favBlock = favHere.length ? `<div class="col-year fav-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
+  const favBlock = favHere.length ? `<div class="col-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
     <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
 
   area.innerHTML = `<div class="libbar"><span class="colcount">${totalFiles}개 보이스</span>${axisBar()}</div>`
