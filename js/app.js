@@ -1431,7 +1431,7 @@ function favLiverStrip(cur) {
   const names = favLivers();
   if (!names.length) return '';
   return `<div class="fav-strip-wrap">
-    <div class="fav-strip-head">즐겨찾기 라이버</div>
+    <div class="fav-strip-head">즐겨 듣는 라이버</div>
     <div class="fav-strip">${names.map((name) => {
       const n = state.files.filter((f) => (f.liver || '기타') === name).length;
       return `<button type="button" class="fav-liver ${name === cur ? 'is-on' : ''}" data-act="sel-liver" data-liver="${esc(name)}">
@@ -1535,7 +1535,7 @@ function renderThemeDetail(tag) {
 function renderThemeIndex() {
   const area = $('#listArea');
   const themes = themeIndex();
-  area.innerHTML = `<div class="libbar"><span class="colcount">${state.files.length}개 보이스</span>${axisBar()}</div>`
+  area.innerHTML = `<div class="libbar">${axisBar()}</div>`
     + (themes.length
       ? `<div class="col-grid">${themes.map(([tag, files]) => themeTileHTML(tag, files)).join('')}</div>`
       : emptyHTML({ icon: '🏷', title: '아직 테마가 없어요', desc: '보이스 메타데이터를 읽는 중이에요. 잠시 뒤 다시 열어 주세요.' }));
@@ -1555,7 +1555,7 @@ function renderCollection() {
   }
   const all = state.files;
   if (!all.length) {
-    area.innerHTML = `<div class="libbar"><span class="colcount">0개 보이스</span>${axisBar()}</div>`
+    area.innerHTML = `<div class="libbar">${axisBar()}</div>`
       + emptyHTML({ icon: '📂', title: '아직 보이스가 없어요', desc: '드라이브를 연결하면 라이버·연도별로 모아 보여드려요.' });
     return;
   }
@@ -1604,7 +1604,7 @@ function renderCollection() {
   const favBlock = favHere.length ? `<div class="col-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
     <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
 
-  area.innerHTML = `<div class="libbar"><span class="colcount">${totalFiles}개 보이스</span>${axisBar()}</div>`
+  area.innerHTML = `<div class="libbar">${axisBar()}</div>`
     + favLiverStrip(cur) + head + favBlock + sections;
   $('#listFoot').textContent = '';
   prefetchSeriesCovers(flat);
