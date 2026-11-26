@@ -1392,7 +1392,7 @@ function syncCardStates() {
 }
 
 /* ─────────────────────────── sheets ─────────────────────────── */
-const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics' };
+const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics', panelKey: '' };
 
 function openSheet(title, html, { tall = false, full = false } = {}) {
   $('#sheetTitle').textContent = title;
@@ -1906,6 +1906,14 @@ function npMemoHTML(file) {
 function npPanelHTML(file, seg) {
   const p = currentParsed(file);
   if (seg === 'memo') return npMemoHTML(file);
+  if (seg === 'cover') {
+    return `
+    <div class="np-art">
+      ${p.coverUrl
+        ? `<img src="${p.coverUrl}" alt="${esc(p.title || displayName(file.name))}" data-act="np-art" />`
+        : '<div class="np-art-empty"><svg><use href="#i-mic"/></svg><span>이 곡에는 앨범 커버가 없어요.</span></div>'}
+    </div>`;
+  }
   return `
     <div class="np-panel-head">
       <button type="button" data-act="np-edit-lyrics">자막 편집</button>
@@ -1917,6 +1925,24 @@ function npPanelHTML(file, seg) {
       : `<div class="lrc-empty">${p.plainLyrics ? esc(p.plainLyrics) : '이 곡에는 타임싱크 자막이 없어요.'}</div>`}`;
 }
 
+function renderNowPanel(file, seg) {
+  const panel = $('#npPanel');
+  if (!panel) return;
+  panel.innerHTML = npPanelHTML(file, seg);
+  const p = currentParsed(file);
+  ui.panelKey = `${file.id}|${seg}|${(p.lyrics || []).length}`;
+  ui.lyricIdx = -1;
+}
+
+function openCoverView(url) {
+  if (!url) { toast('이 곡에는 앨범 커버가 없어요'); return; }
+  const ov = document.createElement('div');
+  ov.className = 'coverview';
+  ov.innerHTML = `<img src="${url}" alt="앨범 커버" /><button type="button" class="cv-x" aria-label="닫기"><svg><use href="#i-close"/></svg></button>`;
+  ov.addEventListener('click', () => ov.remove());
+  document.body.appendChild(ov);
+}
+
 function openNowPlaying() {
   if (!player?.current) { toast('재생 중인 곡이 없어요'); return; }
   const file = player.current;
@@ -1925,12 +1951,13 @@ function openNowPlaying() {
   ui.sheet = 'now';
   ui.sheetFile = file.id;
   ui.lyricIdx = -1;
-  ui.seg = 'lyrics';
+  const seg0 = ['cover', 'lyrics', 'memo'].includes(personal.lastSeg) ? personal.lastSeg : 'lyrics';
+  ui.seg = seg0;
   const eyebrow = p.album || file.liver || '지금 재생 중';
   const body = openSheet(eyebrow, `
     <div class="np">
       <div class="np-hero">
-        <div class="np-cover" id="npCover">${p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</div>
+        <button type="button" class="np-cover" id="npCover" data-act="np-cover" aria-label="앨범 커버 크게 보기">${p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</button>
         <div class="np-head">
           <div class="np-info">
             <div class="np-title" id="npTitle">${esc(p.title || displayName(file.name))}</div>
@@ -1973,12 +2000,14 @@ function openNowPlaying() {
         ${[0.75, 1, 1.25, 1.5].map((r) => `<button type="button" class="chip ${Math.abs((player.rate || 1) - r) < 0.001 ? 'is-on' : ''}" data-act="np-rate-set" data-rate="${r}">${rateLabel(r)}</button>`).join('')}
       </div>
       <div class="np-seg" id="npSeg">
-        <button type="button" data-seg="lyrics" class="is-on">가사</button>
-        <button type="button" data-seg="memo">메모</button>
+        <button type="button" data-seg="cover" class="${seg0 === 'cover' ? 'is-on' : ''}">커버</button>
+        <button type="button" data-seg="lyrics" class="${seg0 === 'lyrics' ? 'is-on' : ''}">가사</button>
+        <button type="button" data-seg="memo" class="${seg0 === 'memo' ? 'is-on' : ''}">메모</button>
       </div>
-      <div class="np-panel" id="npPanel">${npPanelHTML(file, 'lyrics')}</div>
+      <div class="np-panel" id="npPanel">${npPanelHTML(file, seg0)}</div>
     </div>
   `, { full: true });
+  ui.panelKey = `${file.id}|${seg0}|${(p.lyrics || []).length}`;
 
   updateNowSheet({
     current: file,
@@ -2012,13 +2041,11 @@ function openNowPlaying() {
     btn.addEventListener('click', () => {
       const seg = btn.dataset.seg;
       ui.seg = seg;
+      personal.lastSeg = seg;
+      saveJSON(PERSONAL_KEY, personal);
       for (const x of $$('#npSeg button', body)) x.classList.toggle('is-on', x === btn);
-      const panel = $('#npPanel');
-      if (panel) panel.innerHTML = npPanelHTML(file, seg);
-      if (seg === 'lyrics') {
-        ui.lyricIdx = -1;
-        updateNowLyric(player.audio.currentTime || 0);
-      }
+      renderNowPanel(file, seg);
+      if (seg === 'lyrics') updateNowLyric(player.audio.currentTime || 0);
     });
   }
 
@@ -2042,6 +2069,10 @@ function openNowPlaying() {
     }
     if (act === 'np-liver') {
       jumpToFilter({ liver: b.dataset.liver || '' });
+      return;
+    }
+    if (act === 'np-cover' || act === 'np-art') {
+      openCoverView(currentParsed(file).coverUrl);
       return;
     }
     if (act === 'np-play') { if (player.current?.id === file.id) player.toggle(); else playFile(file); return; }
@@ -2117,16 +2148,14 @@ function openNowPlaying() {
       toast('메모를 남겼어요');
       renderList();
       renderTabs();
-      const panel = $('#npPanel');
-      if (panel) panel.innerHTML = npPanelHTML(file, 'memo');
+      renderNowPanel(file, 'memo');
       return;
     }
     if (act === 'np-del') {
       await shared.removeNote(file.id, b.dataset.id);
       toast('메모를 지웠어요');
       renderList();
-      const panel = $('#npPanel');
-      if (panel) panel.innerHTML = npPanelHTML(file, 'memo');
+      renderNowPanel(file, 'memo');
       return;
     }
   });
@@ -2143,6 +2172,11 @@ function updateNowSheet(st) {
   const eyebrow = p.album || cur.liver || '지금 재생 중';
   const titleEl = $('#sheetTitle');
   if (titleEl) titleEl.textContent = eyebrow;
+  const panelKey = `${cur.id}|${ui.seg}|${(p.lyrics || []).length}`;
+  if ($('#npPanel') && ui.seg !== 'memo' && ui.panelKey !== panelKey) {
+    renderNowPanel(cur, ui.seg);
+    if (ui.seg === 'lyrics') updateNowLyric(st.currentTime);
+  }
   const dur = st.duration || p.duration || shared?.data?.durations?.[cur.id] || 0;
   const pct = dur > 0 ? Math.min(100, (st.currentTime / dur) * 100) : 0;
   const seek = $('#npSeek');

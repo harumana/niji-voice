@@ -967,14 +967,52 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 .np-cover {
   flex: 0 0 auto;
   width: 84px; height: 84px;
+  padding: 0;
   border-radius: 15px; overflow: hidden;
   background: var(--surface-2);
   display: grid; place-items: center;
   color: var(--faint);
   box-shadow: 0 10px 26px rgba(17, 24, 39, .14);
 }
+.np-cover:active { transform: scale(.97); }
 .np-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .np-cover svg { width: 26px; height: 26px; }
+
+/* big artwork */
+.np-art { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; padding: 8px 0 4px; }
+.np-art img {
+  display: block;
+  max-width: min(86vw, 360px);
+  max-height: 100%;
+  width: auto; height: auto;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(17, 24, 39, .22);
+}
+.np-art-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  color: var(--faint); font-size: 12.5px;
+}
+.np-art-empty svg { width: 34px; height: 34px; opacity: .45; }
+
+.coverview {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10, 12, 18, .94);
+  display: grid; place-items: center;
+  padding: 24px;
+  animation: fade .16s ease;
+}
+.coverview img {
+  max-width: min(92vw, 560px); max-height: 82vh;
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .5);
+}
+.cv-x {
+  position: fixed; top: calc(14px + var(--safe-t)); right: 14px;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: rgba(255, 255, 255, .16); color: #fff;
+  display: grid; place-items: center;
+}
+.cv-x svg { width: 15px; height: 15px; }
 
 .np-head { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 4px; }
 .np-info { flex: 1 1 auto; min-width: 0; }
