@@ -79,7 +79,7 @@ function exVariantOf(...sources) {
 const normTxt = (v) => String(v || '').toLowerCase().replace(/[_\-.\s()\[\]]/g, '');
 
 /** Human title: ID3 title first, else a cleaned file name; "라이버 - 시리즈 (EX)" when both are known. */
-function displayTitleOf(f) {
+function displayTitleOf(f, { short = false } = {}) {
   if (!f) return '';
   const p = parsedCache.get(f.id);
   const id3 = (p?.title || '').trim();
@@ -97,7 +97,7 @@ function displayTitleOf(f) {
   }
 
   if (series && normTxt(src).includes(normTxt(series))) {
-    const base = liverShort ? `${liverShort} - ${series}` : series;
+    const base = (liverShort && !short) ? `${liverShort} - ${series}` : series;
     const liverCore = liverShort.replace(/\s+/g, '');
     const liverRe = liverCore
       ? new RegExp(liverCore.split('').map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*'), 'gi')
@@ -829,7 +829,7 @@ function cardHTML(f, { playlist = false } = {}) {
     ${state.selectMode ? `<span class="card-sel">${selected ? '<svg><use href="#i-check"/></svg>' : ''}</span>` : ''}
     <span class="cov" data-cover="${esc(f.id)}"${cover ? ' data-painted="1"' : ''}>${cover ? `<img src="${cover}" alt="" loading="lazy" />` : '<svg><use href="#i-mic"/></svg>'}</span>
     <div class="card-body" data-act="open">
-      <div class="card-title">${esc(displayTitleOf(f))}</div>
+      <div class="card-title">${esc(displayTitleOf(f, { short: true }))}</div>
       <div class="card-sub">
         <span class="sub-meta">${meta.join('<i class="dot"></i>')}</span>
         ${status.length ? `<span class="sub-status">${status.join('')}</span>` : ''}
