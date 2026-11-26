@@ -2215,6 +2215,15 @@ function openSettings() {
     </div>
 
     <div class="field">
+      <label>목록 새로고침</label>
+      <label class="switchrow">
+        <input type="checkbox" id="setAutoSync" ${personal.autoSync ? 'checked' : ''} />
+        <span>실행할 때 자동으로 새로 받기</span>
+      </label>
+      <p class="hint">꺼 두면 저장해 둔 목록을 그대로 써요. 위 새로고침 버튼을 누를 때만 드라이브를 다시 읽습니다.</p>
+    </div>
+
+    <div class="field">
       <label>Google OAuth Client ID</label>
       <input type="text" id="setClientId" placeholder="000000000000-xxxxxxxx.apps.googleusercontent.com" value="${esc(settings.clientId)}" autocapitalize="off" autocomplete="off" spellcheck="false" />
       <p class="hint">Google Cloud Console → 사용자 인증 정보 → “OAuth 클라이언트 ID(웹 애플리케이션)”에서 만들어요.
@@ -2365,6 +2374,8 @@ async function saveSettingsFromUI() {
   settings.clientId = clientId;
   settings.rootId = rootId;
   settings.includeBackup = !!$('#setBackup')?.checked;
+  const autoEl = $('#setAutoSync');
+  if (autoEl) { personal.autoSync = !!autoEl.checked; saveJSON(PERSONAL_KEY, personal); }
   saveJSON(SETTINGS_KEY, settings);
   drive.setClientId(clientId);
   toast('저장했어요');
@@ -3541,6 +3552,7 @@ async function refresh(manual = false) {
     state.fromCache = false;
     await refreshOfflineIds();
     await primeCache();
+    await mergeOfflineIntoLibrary();
     renderAll();
     if (manual) toast('새로고침 완료');
   } catch (e) {
@@ -3885,9 +3897,8 @@ async function boot() {
       }
       renderHeader();
       if (drive.connected) {
-        // 저장해 둔 목록은 그대로 쓰고, 오래됐을 때만 조용히 새로 받는다
-        const stale = !fromCache || Date.now() - (state.cachedAt || 0) > 20 * 60_000;
-        if (fromCache) { if (stale) syncQuietly(); }
+        // 저장해 둔 목록은 영구 캐시로 쓴다 — 새로 받는 건 직접 새로고침할 때만
+        if (!fromCache) syncQuietly();
         else loadLive({ interactive: false, silent: true }).catch(() => {});
       }
     })();
