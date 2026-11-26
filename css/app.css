@@ -1034,10 +1034,34 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   object-fit: contain;
 }
 .np-meta { flex: 0 0 auto; width: 100%; text-align: center; padding: 0 4px 2px; }
+.np-meta-text { min-width: 0; flex: 1 1 auto; }
 .np-title-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .np-meta .np-title { text-align: center; }
 .np-meta .np-sub { text-align: center; }
 .np-meta .np-tags { justify-content: center; }
+
+/* 가사·메모를 크게 키워 큰 커버 자리가 없어지면 제목 옆의 작은 커버로 */
+.np-mini { display: none; }
+.np-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.np.is-mini { display: flex; flex-direction: column; }
+.np.is-mini .np-art-wrap { display: none; }
+.np.is-mini .np-meta {
+  display: flex; align-items: center; gap: 10px;
+  text-align: left; padding: 4px 4px 8px;
+  animation: fade .16s ease;
+}
+.np.is-mini .np-mini {
+  display: grid; place-items: center;
+  flex: 0 0 auto; width: 46px; height: 46px;
+  border-radius: 10px; overflow: hidden;
+  background: var(--fill); color: var(--faint);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, .12);
+}
+.np.is-mini .np-mini svg { width: 18px; height: 18px; opacity: .5; }
+.np.is-mini .np-title-row { justify-content: flex-start; }
+.np.is-mini .np-meta .np-title,
+.np.is-mini .np-meta .np-sub { text-align: left; }
+.np.is-mini .np-meta .np-tags { justify-content: flex-start; }
 
 /* drag handle: pull the lyrics sheet down to grow the cover */
 .np-drag {

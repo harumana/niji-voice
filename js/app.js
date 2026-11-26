@@ -387,6 +387,16 @@ function enrich(tree) {
 }
 
 /** no library yet: an empty library plus the connect prompt */
+/** 목록 캐시가 없어도 오프라인 저장분만으로 화면을 먼저 그린다 */
+function startFromOffline() {
+  state.mode = 'live';
+  state.fromCache = false;
+  state.cachedAt = 0;
+  shared = new SharedMeta(drive, settings.rootId || '');
+  shared.onError = (e) => toast(`공유 메모 저장 실패: ${e?.message || e}`, { err: true, ms: 4000 });
+  showDisconnected();
+}
+
 function showDisconnected() {
   state.mode = 'live';
   state.files = [];
@@ -514,6 +524,10 @@ async function syncQuietly() {
     renderHeader();
   } catch (e) {
     if (e instanceof NeedsAuth) state.liveError = 'auth';
+    if (!state.files.length) {
+      const offline = await offlineLibrary();
+      if (offline.length) { state.files = offline; renderAll(); }
+    }
     renderHeader();
   } finally {
     state.syncing = false;
@@ -540,6 +554,40 @@ async function refreshOfflineIds() {
     const ks = await db.keys('audio');
     for (const k of ks) offlineIds.add(k);
   } catch {}
+}
+
+/** 오프라인 기록에 남겨 둘 목록 정보 — 드라이브 없이도 목록을 그릴 수 있게 */
+function offlineMetaOf(f) {
+  return {
+    id: f.id, name: f.name, size: f.size || 0,
+    parentId: f.parentId || null, driveId: f.driveId || null,
+    createdTime: f.createdTime || '', modifiedTime: f.modifiedTime || '',
+    path: Array.isArray(f.path) ? f.path : [],
+    liver: f.liver || '', year: f.year || '', seriesKey: f.seriesKey || '',
+  };
+}
+
+/** IndexedDB에 저장된 오프라인 보이스만으로 라이브러리를 복원한다 */
+async function offlineLibrary() {
+  let rows = [];
+  try { rows = await db.all('audio'); } catch { return []; }
+  const out = [];
+  for (const r of rows) {
+    const known = state.files.find((f) => f.id === r.fileId);
+    const m = r.meta || (known ? offlineMetaOf(known) : null);
+    if (!m) continue;
+    out.push({ ...m, path: m.path || known?.path || [], offline: true });
+  }
+  return out;
+}
+
+/** 목록 어디에도 없는 오프라인 보이스를 라이브러리에 붙인다 */
+async function mergeOfflineIntoLibrary() {
+  const extra = (await offlineLibrary()).filter((f) => !state.files.some((x) => x.id === f.id));
+  if (!extra.length) return false;
+  state.files = [...extra, ...state.files];
+  renderList();
+  return true;
 }
 
 function setConnText(text) {
@@ -1515,6 +1563,7 @@ async function offlineMany(files) {
       await db.put('audio', f.id, {
         fileId: f.id, name: f.name, size: buf.byteLength,
         blob: new Blob([buf], { type: 'audio/mpeg' }), savedAt: Date.now(),
+        meta: offlineMetaOf(f),
       });
       offlineIds.add(f.id);
       ok += 1;
@@ -2635,6 +2684,19 @@ function npMemoHTML(file) {
 }
 
 /** 가사·메모 시트를 끌어내려 접으면 위의 커버가 그만큼 커진다 */
+/**
+ * 가사·메모를 위로 끌어올려 큰 커버 자리가 사라질 만큼 좁아지면,
+ * 커버를 없애지 않고 제목 정보 왼쪽의 작은 커버로 옮긴다.
+ */
+function syncMiniCover(npEl) {
+  const wrap = npEl?.querySelector('#npArtWrap');
+  if (!wrap) return;
+  const wasMini = npEl.classList.contains('is-mini');
+  if (wasMini) npEl.classList.remove('is-mini');
+  const h = wrap.getBoundingClientRect().height;
+  if (h < 64) npEl.classList.add('is-mini');
+}
+
 function bindPanelDrag(body) {
   const drag = body.querySelector('#npDrag');
   const panel = body.querySelector('#npPanel');
@@ -2647,6 +2709,14 @@ function bindPanelDrag(body) {
 
   const saved = Number(personal.panelH);
   if (saved > 0) panel.style.height = `${clamp(saved, minH, maxH())}px`;
+
+  let miniRaf = 0;
+  const queueMiniSync = () => {
+    if (miniRaf) return;
+    miniRaf = requestAnimationFrame(() => { miniRaf = 0; syncMiniCover(npEl); });
+  };
+  queueMiniSync();
+  window.addEventListener('resize', queueMiniSync);
 
   let startY = 0;
   let startH = 0;
@@ -2664,6 +2734,7 @@ function bindPanelDrag(body) {
   drag.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     panel.style.height = `${clamp(startH - (e.clientY - startY), minH, maxH())}px`;
+    queueMiniSync();
   });
   const end = () => {
     if (!dragging) return;
@@ -2673,6 +2744,7 @@ function bindPanelDrag(body) {
     personal.panelH = Math.round(panel.getBoundingClientRect().height);
     saveJSON(PERSONAL_KEY, personal);
     panel.style.height = `${clamp(personal.panelH, minH, maxH())}px`;
+    queueMiniSync();
   };
   drag.addEventListener('pointerup', end);
   drag.addEventListener('pointercancel', end);
@@ -2684,6 +2756,7 @@ function bindPanelDrag(body) {
     personal.panelH = now > full * 0.6 ? minH : full;
     saveJSON(PERSONAL_KEY, personal);
     panel.style.height = `${clamp(personal.panelH, minH, full)}px`;
+    queueMiniSync();
   });
 }
 
@@ -2748,6 +2821,12 @@ function openNowPlaying() {
         </button>
       </div>
       <div class="np-meta">
+        <button type="button" class="np-mini" id="npMini" data-act="np-cover" aria-label="앨범 커버 크게 보기">
+          ${coverOf(file).thumb || coverOf(file).full
+            ? `<img src="${coverOf(file).thumb || coverOf(file).full}" alt="" />`
+            : `<svg><use href="#i-mic"/></svg>`}
+        </button>
+        <div class="np-meta-text">
         <div class="np-title-row">
           <div class="np-title" id="npTitle">${esc(displayTitleOf(file))}</div>
           <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
@@ -2759,6 +2838,7 @@ function openNowPlaying() {
           ${file.liver ? `<button type="button" class="badge np-liver" data-act="np-liver" data-liver="${esc(file.liver)}">${esc(file.liver)}</button>` : ''}
           ${tags.map((t) => `<button type="button" class="badge np-tag" data-act="np-tag" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}
         </div>` : ''}
+        </div>
       </div>
 
       <div class="np-seekwrap">
@@ -3774,7 +3854,7 @@ async function boot() {
   const cached = loadTreeCache();
   const fromCache = !!(cached && cached.files?.length);
   if (fromCache) startFromCache(cached);
-  else showDisconnected();
+  else startFromOffline();
 
   bindEvents();
   initPlayer();
@@ -3783,7 +3863,13 @@ async function boot() {
 
   // 2) offline markers and cached ID3 come from IndexedDB; repaint once known
   Promise.all([refreshOfflineIds(), primeCache()])
-    .then(() => { if (fromCache) renderList(); })
+    .then(async () => {
+      if (fromCache) { await mergeOfflineIntoLibrary(); renderList(); }
+      else if (!state.files.length) {
+        const offline = await offlineLibrary();
+        if (offline.length) { state.files = offline; renderAll(); }
+      }
+    })
     .catch(() => {});
 
   // 3) reconnect quietly on launch: a held token talks to Drive at once, and an
@@ -3799,7 +3885,9 @@ async function boot() {
       }
       renderHeader();
       if (drive.connected) {
-        if (fromCache) syncQuietly();
+        // 저장해 둔 목록은 그대로 쓰고, 오래됐을 때만 조용히 새로 받는다
+        const stale = !fromCache || Date.now() - (state.cachedAt || 0) > 20 * 60_000;
+        if (fromCache) { if (stale) syncQuietly(); }
         else loadLive({ interactive: false, silent: true }).catch(() => {});
       }
     })();
