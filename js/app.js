@@ -257,19 +257,21 @@ function loadTreeCache(rootId) {
     if (want) {
       const raw = localStorage.getItem(treeCacheKey(want));
       const data = raw ? JSON.parse(raw) : null;
-      if (cacheMissingCovers(data)) return null;
+      if (cacheMissingCovers(data) || data?.v !== TREE_CACHE_V) return null;
       return data?.root?.id && Array.isArray(data.files) ? data : null;
     }
     const best = newestCache('niji.tree.');
-    if (cacheMissingCovers(best)) return null;
+    if (cacheMissingCovers(best) || best?.v !== TREE_CACHE_V) return null;
     return best?.root?.id && Array.isArray(best.files) ? best : null;
   } catch { return null; }
 }
 
+const TREE_CACHE_V = 4;
+
 function saveMetaCache(data) {
   if (!data) return;
   try {
-    localStorage.setItem(metaCacheKey(settings.rootId), JSON.stringify({ savedAt: Date.now(), data }));
+    localStorage.setItem(metaCacheKey(settings.rootId), JSON.stringify({ savedAt: Date.now(), data: { ...data, v: TREE_CACHE_V } }));
   } catch {}
 }
 
