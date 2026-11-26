@@ -1913,7 +1913,7 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
     ui.stack.push({
       body: old,
       title: $('#sheetTitle').textContent,
-      sheet: ui.sheet,
+      sheet: old.dataset.owner || ui.sheet,
       full: sheetEl.classList.contains('is-full'),
       tall: sheetEl.classList.contains('is-tall'),
     });
@@ -1925,6 +1925,7 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
   body.id = 'sheetBody';
   body.innerHTML = html;
   sheetEl.appendChild(body);
+  body.dataset.owner = ui.sheet || '';
   sheetEl.classList.toggle('is-tall', tall && !full);
   sheetEl.classList.toggle('is-full', !!full);
   const closeUse = $('#sheetClose')?.querySelector('use');
@@ -3111,6 +3112,7 @@ function openMoreSheet(file, { playlist = false } = {}) {
     if (act === 'm-pl-remove') { removeFromPlaylist(file.id); return; }
     if (act === 'm-offline') {
       await toggleOffline(file);
+      closeSheet();
       openMoreSheet(file, { playlist });
       return;
     }
