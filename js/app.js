@@ -993,21 +993,11 @@ function renderListInner() {
 
   let files;
   if (state.view === 'fav') {
-    files = visibleFiles().filter((f) => isFav(f.id));
-    if (!files.length) {
-      area.innerHTML = emptyHTML({
-        icon: '⭐', title: '즐겨찾기가 비어 있어요',
-        desc: '파일 카드의 별을 눌러 두면 여기에 모여요.',
-      });
-      return;
-    }
-    area.innerHTML = listHead(
-      `${files.length}개 즐겨찾기`,
-      `<span class="listhead-acts"><button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>`
-    ) + files.map((f) => cardHTML(f)).join('');
-    foot.textContent = '';
-    return;
-  } else {
+    state.view = 'playlists';
+    state.openPlaylistId = 'fav';
+    return renderPlaylists();
+  }
+  {
     files = visibleFiles();
     if (!files.length) {
       if (!state.files.length) {
@@ -1038,19 +1028,35 @@ function renderListInner() {
 
 function renderPlaylists() {
   const area = $('#listArea');
+  if (state.openPlaylistId === 'fav') {
+    const files = state.files.filter((f) => isFav(f.id));
+    area.innerHTML = `
+      <div class="listhead">
+        <button class="mini" data-act="pl-back">‹ 보관함</button>
+        <span>즐겨찾기 · ${files.length}개</span>
+        ${files.length ? `<span class="listhead-acts"><button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>` : ''}
+      </div>
+      ${files.length ? files.map((f) => cardHTML(f)).join('')
+        : emptyHTML({ icon: '⭐', title: '즐겨찾기가 비어 있어요', desc: '보이스 카드의 별을 눌러 두면 여기에 모여요.' })}
+      ${files.length ? `<div class="btnrow" style="margin:16px 4px 0">
+        <button class="btn-secondary" data-act="fav-play">전체 재생</button>
+      </div>` : ''}`;
+    $('#listFoot').textContent = '';
+    return;
+  }
   if (state.openPlaylistId === 'offline') {
     const files = state.files.filter((f) => offlineIds.has(f.id))
       .sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true }));
     area.innerHTML = `
       <div class="listhead">
-        <button class="mini" data-act="pl-back">‹ 재생목록</button>
+        <button class="mini" data-act="pl-back">‹ 보관함</button>
         <span>오프라인 저장 · ${files.length}개</span>
         ${files.length ? `<span class="listhead-acts"><button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>` : ''}
       </div>
       ${files.length ? files.map((f) => cardHTML(f)).join('')
         : emptyHTML({
           icon: '⬇️', title: '오프라인 저장한 보이스가 없어요',
-          desc: '다른 재생목록에서 보이스를 골라 <b>오프라인</b>으로 저장하면<br>여기 모여 인터넷 없이도 들을 수 있어요.',
+          desc: '보이스를 골라 <b>오프라인</b>으로 저장하면<br>여기 모여 인터넷 없이도 들을 수 있어요.',
         })}
       ${files.length ? `<div class="btnrow" style="margin:16px 4px 0">
         <button class="btn-secondary" data-act="offline-play">전체 재생</button>
@@ -1064,11 +1070,11 @@ function renderPlaylists() {
     const files = pl.fileIds.map(fileById).filter(Boolean);
     area.innerHTML = `
       <div class="listhead">
-        <button class="mini" data-act="pl-back">‹ 재생목록</button>
+        <button class="mini" data-act="pl-back">‹ 보관함</button>
         <span>${esc(pl.name)} · ${files.length}개</span>
       </div>
       ${files.length ? files.map((f) => cardHTML(f, { playlist: true })).join('')
-        : emptyHTML({ icon: '🎵', title: '아직 보이스가 없어요', desc: '보이스의 ⋯ 메뉴에서 재생목록에 추가할 수 있어요.' })}
+        : emptyHTML({ icon: '🎵', title: '아직 보이스가 없어요', desc: '보이스의 ⋯ 메뉴에서 이 목록에 담을 수 있어요.' })}
       <div class="btnrow" style="margin:16px 4px 0">
         <button class="btn-secondary" data-act="pl-play">전체 재생</button>
         <button class="btn-secondary btn-danger" data-act="pl-delete">재생목록 삭제</button>
@@ -1077,6 +1083,14 @@ function renderPlaylists() {
     return;
   }
 
+  const favCount = state.files.filter((f) => isFav(f.id)).length;
+  const favRow = `
+    <button class="pl-row" data-act="pl-fav">
+      <span class="pl-ico"><svg><use href="#i-star"/></svg></span>
+      <span class="pl-name">즐겨찾기</span>
+      <span class="pl-count">${favCount}개</span>
+      <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
+    </button>`;
   const offCount = state.files.filter((f) => offlineIds.has(f.id)).length;
   const offRow = `
     <button class="pl-row pl-offline" data-act="pl-offline">
@@ -1085,7 +1099,7 @@ function renderPlaylists() {
       <span class="pl-count">${offCount}개</span>
       <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
     </button>`;
-  const rows = offRow + personal.playlists.map((p) => `
+  const rows = favRow + offRow + personal.playlists.map((p) => `
     <button class="pl-row" data-act="pl-open" data-id="${esc(p.id)}">
       <span class="pl-ico"><svg><use href="#i-list"/></svg></span>
       <span class="pl-name">${esc(p.name)}</span>
@@ -1094,8 +1108,8 @@ function renderPlaylists() {
     </button>`).join('');
 
   area.innerHTML = `
-    <div class="listhead"><span>내 재생목록 ${personal.playlists.length}개</span></div>
     ${rows}
+    <div class="listhead"><span>내 재생목록 ${personal.playlists.length}개</span></div>
     <div style="padding:12px 4px"><button class="btn-secondary" data-act="pl-new">+ 새 재생목록</button></div>`;
 }
 
@@ -2127,7 +2141,7 @@ function toastProgress(label) {
 function initPlayer() {
   player = new Player($('#audio'), {
     resolve: resolveTrack,
-    onState: updatePlayerUI,
+    onState: (st) => { updatePlayerUI(st); saveSession(st.isPlaying !== sessionLastPlaying); sessionLastPlaying = st.isPlaying; },
     onError: (e) => toast(e?.message || '재생 중 문제가 생겼어요.', { err: true }),
   });
 
@@ -2150,6 +2164,33 @@ function playFile(file, { list = null, startAt = 0 } = {}) {
   personal.lastFileId = file.id;
   saveJSON(PERSONAL_KEY, personal);
   player.playFiles(queue, idx, { startAt });
+}
+
+/* ── 마지막 재생 상태 — 앱을 나갔다 들어와도 그 목록 그 자리에서 이어 듣는다 ── */
+const SESSION_KEY = 'niji.session';
+let sessionSaveAt = 0;
+let sessionLastPlaying = null;
+
+const sessionFileOf = (f) => ({
+  id: f.id, name: f.name || '', path: f.path || [],
+  liver: f.liver || '', year: f.year || '', folderCoverId: f.folderCoverId || '',
+});
+
+function saveSession(force = false) {
+  if (!player?.current) return;
+  const now = Date.now();
+  if (!force && now - sessionSaveAt < 2000) return;
+  sessionSaveAt = now;
+  const idx = player.queue.findIndex((f) => f.id === player.current.id);
+  saveJSON(SESSION_KEY, {
+    v: 1, at: now,
+    index: idx >= 0 ? idx : 0,
+    time: player.audio?.currentTime || 0,
+    playing: !!player.isPlaying,
+    shuffle: !!player.shuffle,
+    rate: player.rate || 1,
+    queue: (player.queue.length ? player.queue : [player.current]).map(sessionFileOf),
+  });
 }
 
 function updatePlayerUI(st) {
@@ -2288,7 +2329,7 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
   body.scrollTop = 0;
   document.body.style.overflow = 'hidden';
   document.body.classList.add('sheet-open');
-  bindSheetSwipe(!!full);
+  bindSheetSwipe(true);
   return body;
 }
 
@@ -2397,7 +2438,7 @@ function closeSheet() {
     sheetEl.style.transition = '';
     overlay.style.opacity = '';
     ui.sheet = prev.sheet;
-    bindSheetSwipe(prev.full);
+    bindSheetSwipe(true);
     if (prev.sheet === 'now' && player?.current) refreshNowSheet();
     return;
   }
@@ -3104,7 +3145,7 @@ function openNowPlaying() {
         <button type="button" class="np-pill ${player.ab.a != null ? 'is-on' : ''}" id="npAB" data-act="np-ab">A–B</button>
         <button type="button" class="np-pill" id="npRate" data-act="np-rate">${rateLabel(player.rate)}</button>
         <button type="button" class="np-pill ${player.sleep.mode ? 'is-on' : ''}" id="npSleep" data-act="np-sleep"><svg><use href="#i-moon"/></svg>취침</button>
-        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>다음 재생</button>
+        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>재생목록</button>
         <button type="button" class="np-pill" data-act="np-more"><svg><use href="#i-more"/></svg>더보기</button>
       </div>
       <div class="np-optrow" id="npSleepOpt" hidden>
@@ -3378,7 +3419,7 @@ function openQueue() {
   ui.queueSel = ui.queueSel || new Set();
   ui.queueSel.clear();
   ui.queueSelect = false;
-  const body = openSheet('다음 재생', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
+  const body = openSheet('재생목록', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
 
   const dropAt = (indexes) => {
     if (!player || !indexes.length) return;
@@ -3387,7 +3428,7 @@ function openQueue() {
     render();
     refreshNowSheet();
     renderList();
-    if (!player.queue.length) toast('다음 재생 목록이 비었어요 — 지금 곡은 계속 재생돼요');
+    if (!player.queue.length) toast('재생목록이 비었어요 — 지금 곡은 계속 재생돼요');
   };
 
   const bindSwipe = () => {
@@ -3433,14 +3474,14 @@ function openQueue() {
   const render = () => {
     const q = player?.queue || [];
     if (!q.length) {
-      $('#sheetTitle').textContent = '다음 재생';
-      body.innerHTML = '<div class="lrc-empty">다음 재생이 비어 있어요.<br>시리즈나 라이버 전체 재생을 누르면 여기에 쌓여요.</div>';
+      $('#sheetTitle').textContent = '재생목록';
+      body.innerHTML = '<div class="lrc-empty">재생목록이 비어 있어요.<br>시리즈나 라이버 전체 재생을 누르면 여기에 쌓여요.</div>';
       return;
     }
     const sel = ui.queueSel;
     $('#sheetTitle').textContent = ui.queueSelect
-      ? `다음 재생 · ${sel.size}개 선택`
-      : `다음 재생 (${q.length})`;
+      ? `재생목록 · ${sel.size}개 선택`
+      : `재생목록 (${q.length})`;
     body.innerHTML = `
       <div class="q-head">
         <span class="q-count">${q.length}곡 · 왼쪽으로 밀면 빼요</span>
@@ -3457,7 +3498,7 @@ function openQueue() {
                 <span class="hit-file">${esc([f.liver, f.year].filter(Boolean).join(' · '))}</span>
               </span>
             </button>
-            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="다음 재생에서 빼기"><svg><use href="#i-close"/></svg></button>`}
+            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="재생목록에서 빼기"><svg><use href="#i-close"/></svg></button>`}
           </div>`).join('')}
       </div>
       ${ui.queueSelect ? `
@@ -4164,6 +4205,14 @@ async function onListClick(e) {
   }
   if (act === 'pl-open') { state.openPlaylistId = action.dataset.id; renderList(); return; }
   if (act === 'pl-offline') { state.openPlaylistId = 'offline'; renderList(); return; }
+  if (act === 'pl-fav') { state.openPlaylistId = 'fav'; renderList(); return; }
+  if (act === 'fav-play') {
+    const files = state.files.filter((f) => isFav(f.id));
+    if (!files.length) { toast('즐겨찾기한 보이스가 없어요.'); return; }
+    player.playFiles(files, 0);
+    toast(`즐겨찾기 ${files.length}개 재생 시작`);
+    return;
+  }
   if (act === 'offline-play') {
     const files = state.files.filter((f) => offlineIds.has(f.id));
     if (!files.length) { toast('오프라인 저장한 보이스가 없어요.'); return; }
@@ -4369,23 +4418,33 @@ function keepTokenFresh() {
 }
 let freshTimer = 0;
 
+/** 앱을 다시 열면 마지막으로 듣던 목록의 그 자리에서 이어 듣는다 */
 function restoreLast() {
+  const sess = loadJSON(SESSION_KEY, null);
+  const savedQueue = Array.isArray(sess?.queue) ? sess.queue.filter((f) => f && f.id) : [];
+  if (savedQueue.length) {
+    // 화면에 이미 있는 목록 캐시의 객체를 쓰면 커버·태그가 그대로 살아 있다
+    const files = savedQueue.map((f) => fileById(f.id) || f);
+    const idx = Math.min(Math.max(0, Number(sess.index) || 0), files.length - 1);
+    player.setQueue(files, idx);
+    player.shuffle = !!sess.shuffle;
+    player.rate = sess.rate || 1;
+    personal.lastFileId = files[idx].id;
+    saveJSON(PERSONAL_KEY, personal);
+    player.load(files[idx], { startAt: Number(sess.time) || 0, autoplay: false })
+      .then(() => {
+        player.emit();
+        if (sess.playing) player.audio.play?.().catch(() => {});
+      })
+      .catch(() => {});
+    return;
+  }
   const id = personal.lastFileId;
   if (!id) return;
   const f = fileById(id);
   if (!f) return;
   player.current = f;
-  const t = $('#pTitle');
-  if (t) t.textContent = displayTitleOf(f);
-  const s = $('#pSub');
-  if (s) s.textContent = [f.liver, f.year].filter(Boolean).join(' · ');
-  loadParsed(f, { network: drive.connected }).then((p) => {
-    const th = $('#pThumb');
-    const cv = coverOf(f);
-    if (cv.thumb && th) th.innerHTML = `<img src="${cv.thumb}" alt="" />`;
-    const tt = $('#pTitle');
-    if (tt) tt.textContent = displayTitleOf(f);
-  }).catch(() => {});
+  player.emit();
 }
 
 boot();
