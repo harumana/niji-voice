@@ -998,20 +998,46 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 .sheet.is-full .sheet-body { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .np { display: flex; flex-direction: column; align-items: center; flex: 1 1 auto; min-height: 0; width: 100%; padding: 2px 0 0; }
 
-.np-hero { flex: 0 0 auto; width: 100%; display: flex; align-items: center; gap: 14px; padding: 4px 0 2px; }
-.np-cover {
-  flex: 0 0 auto;
-  width: 84px; height: 84px;
-  padding: 0;
-  border-radius: 15px; overflow: hidden;
-  background: var(--surface-2);
-  display: grid; place-items: center;
-  color: var(--faint);
-  box-shadow: 0 10px 26px rgba(17, 24, 39, .14);
+.np-art-wrap {
+  flex: 1 1 auto; min-height: 0; width: 100%;
+  display: grid; place-items: center; padding: 6px 0 10px;
 }
-.np-cover:active { transform: scale(.97); }
-.np-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.np-cover svg { width: 26px; height: 26px; }
+.np-art-big {
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  aspect-ratio: 1 / 1;
+  display: grid; place-items: center;
+  border-radius: 20px; overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: 0 22px 54px rgba(17, 24, 39, .20);
+  transition: transform .18s ease;
+}
+.np-art-big:active { transform: scale(.98); }
+.np-art-big img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  max-width: min(78vw, 380px); max-height: min(48vh, 380px);
+}
+.np-art-empty { display: grid; place-items: center; width: 160px; height: 160px; color: var(--faint); }
+.np-art-empty svg { width: 46px; height: 46px; opacity: .4; }
+
+.np-meta { flex: 0 0 auto; width: 100%; text-align: center; padding: 0 4px 2px; }
+.np-title-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.np-meta .np-title { text-align: center; }
+.np-meta .np-sub { text-align: center; }
+.np-meta .np-tags { justify-content: center; }
+
+/* drag handle: pull the lyrics sheet down to grow the cover */
+.np-drag {
+  flex: 0 0 auto; width: 100%; height: 22px;
+  display: grid; place-items: center;
+  touch-action: none; cursor: row-resize;
+}
+.np-drag span {
+  display: block; width: 42px; height: 5px; border-radius: 99px;
+  background: var(--line-strong, rgba(17, 24, 39, .18));
+  transition: background .15s ease, width .15s ease;
+}
+.np-drag.is-dragging span, .np-drag:active span { background: var(--accent); width: 56px; }
 
 /* big artwork */
 .np-art { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; padding: 8px 0 4px; }
@@ -1145,7 +1171,7 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 .np-seg {
   flex: 0 0 auto;
   display: flex; gap: 4px; width: 100%;
-  margin-top: 16px; padding: 3px;
+  margin-top: 2px; padding: 3px;
   border-radius: 11px;
   background: var(--surface-2);
 }
@@ -1159,7 +1185,13 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
   background: var(--surface); color: var(--text);
   box-shadow: 0 1px 3px rgba(17, 24, 39, .10);
 }
-.np-panel { flex: 1 1 auto; width: 100%; min-height: 0; margin-top: 2px; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.np-panel {
+  flex: 0 0 auto; width: 100%; min-height: 46px; margin-top: 2px;
+  display: flex; flex-direction: column; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: height .12s ease;
+}
+.np-panel.is-live-drag, .np-drag.is-dragging ~ .np-panel { transition: none; }
 .np-panel .lyrics { flex: 1 1 auto; min-height: 0; max-height: none; }
 .np-panel .lrc-empty { padding: 20px 12px; }
 .np-panel-head { flex: 0 0 auto; }
@@ -1373,3 +1405,9 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 }
 .checkline input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
 .checkline input:checked + span { color: var(--text); font-weight: 600; }
+/* now-playing: the body holds a fixed frame so the cover can grow */
+.sheet.is-full .sheet-body:has(> .np) {
+  display: flex; flex-direction: column;
+  overflow: hidden; padding-bottom: 8px;
+}
+.sheet.is-full .sheet-body > .np { flex: 1 1 auto; }

@@ -872,8 +872,8 @@ function renderList() {
   const summary = filterSummary();
   area.innerHTML = listHead(
     `${files.length}개 파일${summary ? ` · ${esc(summary)}` : ''} · ${sortLabel}`,
-    `<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button>`
-  ) + folderToggle() + files.map((f) => cardHTML(f)).join('');
+    `${folderToggleInline()}<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button>`
+  ) + files.map((f) => cardHTML(f)).join('');
   foot.textContent = '';
 }
 
@@ -924,6 +924,14 @@ function folderToggle() {
   return `<label class="checkline">
     <input type="checkbox" data-act="folder-mode" ${state.folderMode === 'tree' ? 'checked' : ''} />
     <span>폴더별 보기</span>
+  </label>`;
+}
+
+/** 목록 머리 오른쪽에 붙는 컴팩트 토글 */
+function folderToggleInline() {
+  return `<label class="checkmini" data-act="folder-mode" role="checkbox" aria-checked="${state.folderMode === 'tree'}">
+    <span class="checkmini-box">${state.folderMode === 'tree' ? '<svg><use href="#i-check"/></svg>' : ''}</span>
+    <span>폴더별</span>
   </label>`;
 }
 
@@ -1494,7 +1502,7 @@ function renderFolders() {
     </button>`;
   }).join('');
 
-  area.innerHTML = folderToggle() + crumbHTML + folderHTML + (files.length ? files.map((f) => cardHTML(f)).join('') : '')
+  area.innerHTML = crumbHTML + folderHTML + (files.length ? files.map((f) => cardHTML(f)).join('') : '')
     + (!subFolders.length && !files.length ? emptyHTML({ icon: '📂', title: '빈 폴더예요', desc: '여기에는 아직 오디오 파일이 없어요.' }) : '');
   $('#listFoot').textContent = files.length ? `${files.length}개 파일` : '';
 }
@@ -2412,6 +2420,57 @@ function npMemoHTML(file) {
     </div>`;
 }
 
+/** 가사·메모 시트를 끌어내려 접으면 위의 커버가 그만큼 커진다 */
+function bindPanelDrag(body) {
+  const drag = body.querySelector('#npDrag');
+  const panel = body.querySelector('#npPanel');
+  const npEl = body.querySelector('.np');
+  if (!drag || !panel || !npEl) return;
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const maxH = () => Math.max(90, npEl.clientHeight - 210);
+  const minH = 46;
+
+  const saved = Number(personal.panelH);
+  if (saved > 0) panel.style.height = `${clamp(saved, minH, maxH())}px`;
+
+  let startY = 0;
+  let startH = 0;
+  let dragging = false;
+
+  drag.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startH = panel.getBoundingClientRect().height;
+    drag.setPointerCapture?.(e.pointerId);
+    drag.classList.add('is-dragging');
+    e.preventDefault();
+  });
+  drag.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    panel.style.height = `${clamp(startH - (e.clientY - startY), minH, maxH())}px`;
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    drag.classList.remove('is-dragging');
+    personal.panelH = Math.round(panel.getBoundingClientRect().height);
+    saveJSON(PERSONAL_KEY, personal);
+    panel.style.height = `${clamp(personal.panelH, minH, maxH())}px`;
+  };
+  drag.addEventListener('pointerup', end);
+  drag.addEventListener('pointercancel', end);
+
+  // 두 번 두드리면 펼침/접힘
+  drag.addEventListener('dblclick', () => {
+    const full = maxH();
+    const now = panel.getBoundingClientRect().height;
+    personal.panelH = now > full * 0.6 ? minH : full;
+    saveJSON(PERSONAL_KEY, personal);
+    panel.style.height = `${clamp(personal.panelH, minH, full)}px`;
+  });
+}
+
 function npPanelHTML(file, seg) {
   const p = currentParsed(file);
   if (seg === 'memo') return npMemoHTML(file);
@@ -2460,27 +2519,32 @@ function openNowPlaying() {
   ui.sheet = 'now';
   ui.sheetFile = file.id;
   ui.lyricIdx = -1;
-  const seg0 = ['cover', 'lyrics', 'memo'].includes(personal.lastSeg) ? personal.lastSeg : 'lyrics';
+  const seg0 = personal.lastSeg === 'memo' ? 'memo' : 'lyrics';
   ui.seg = seg0;
   const eyebrow = p.album || file.liver || '지금 재생 중';
   const body = openSheet(eyebrow, `
     <div class="np">
-      <div class="np-hero">
-        <button type="button" class="np-cover" id="npCover" data-act="np-cover" aria-label="앨범 커버 크게 보기">${coverOf(file).thumb ? `<img src="${coverOf(file).thumb}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</button>
-        <div class="np-head">
-          <div class="np-info">
-            <div class="np-title" id="npTitle">${esc(displayTitleOf(file))}</div>
-            <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
-            ${(file.liver || tags.length) ? `<div class="np-tags" id="npTags">
-              ${file.liver ? `<button type="button" class="badge np-liver" data-act="np-liver" data-liver="${esc(file.liver)}">${esc(file.liver)}</button>` : ''}
-              ${tags.map((t) => `<button type="button" class="badge np-tag" data-act="np-tag" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}
-            </div>` : ''}
-          </div>
+      <div class="np-art-wrap" id="npArtWrap">
+        <button type="button" class="np-art-big" id="npArt" data-act="np-cover" aria-label="앨범 커버 크게 보기">
+          ${coverOf(file).full || coverOf(file).thumb
+            ? `<img src="${coverOf(file).full || coverOf(file).thumb}" alt="" />`
+            : `<span class="np-art-empty"><svg><use href="#i-mic"/></svg></span>`}
+        </button>
+      </div>
+      <div class="np-meta">
+        <div class="np-title-row">
+          <div class="np-title" id="npTitle">${esc(displayTitleOf(file))}</div>
           <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
             <svg><use href="${isFav(file.id) ? '#i-star-fill' : '#i-star'}"/></svg>
           </button>
         </div>
+        <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
+        ${(file.liver || tags.length) ? `<div class="np-tags" id="npTags">
+          ${file.liver ? `<button type="button" class="badge np-liver" data-act="np-liver" data-liver="${esc(file.liver)}">${esc(file.liver)}</button>` : ''}
+          ${tags.map((t) => `<button type="button" class="badge np-tag" data-act="np-tag" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}
+        </div>` : ''}
       </div>
+
       <div class="np-seekwrap">
         <input id="npSeek" type="range" min="0" max="1000" step="1" value="0" aria-label="재생 위치" />
         <div class="np-times"><span id="npCur">00:00</span><span id="npDur">-00:00</span></div>
@@ -2508,8 +2572,8 @@ function openNowPlaying() {
       <div class="np-optrow" id="npRateOpt" hidden>
         ${[0.75, 1, 1.25, 1.5].map((r) => `<button type="button" class="chip ${Math.abs((player.rate || 1) - r) < 0.001 ? 'is-on' : ''}" data-act="np-rate-set" data-rate="${r}">${rateLabel(r)}</button>`).join('')}
       </div>
+      <div class="np-drag" id="npDrag" role="separator" aria-label="가사·메모 영역 높이 조절"><span></span></div>
       <div class="np-seg" id="npSeg">
-        <button type="button" data-seg="cover" class="${seg0 === 'cover' ? 'is-on' : ''}">커버</button>
         <button type="button" data-seg="lyrics" class="${seg0 === 'lyrics' ? 'is-on' : ''}">가사</button>
         <button type="button" data-seg="memo" class="${seg0 === 'memo' ? 'is-on' : ''}">메모</button>
       </div>
@@ -2557,6 +2621,7 @@ function openNowPlaying() {
       if (seg === 'lyrics') updateNowLyric(player.audio.currentTime || 0);
     });
   }
+  bindPanelDrag(body);
 
   body.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
@@ -3182,6 +3247,16 @@ function onListClick(e) {
   const action = e.target.closest('[data-act]');
   const card = e.target.closest('.card');
 
+  // 선택 모드에서는 카드 어디를 눌러도 선택된다 (커버·체크원 포함)
+  if (card && state.selectMode) {
+    const a = action?.dataset.act;
+    if (!a || a === 'open' || a === 'play' || a === 'sel') {
+      e.preventDefault();
+      toggleSelect(card.dataset.id);
+      return;
+    }
+  }
+
   // views that are not plain card lists
   if (!action) return;
   const act = action.dataset.act;
@@ -3266,7 +3341,9 @@ function onListClick(e) {
     return;
   }
   if (act === 'folder-mode') {
-    state.folderMode = (action.checked !== undefined ? action.checked : action.dataset.mode === 'tree') ? 'tree' : 'collection';
+    const el = action.matches('input') ? action : action.querySelector('input');
+    const on = el ? !!el.checked : action.dataset.mode === 'tree';
+    state.folderMode = on ? 'tree' : 'collection';
     state.openSeries = null;
     state.openTheme = null;
     if (state.folderMode === 'tree' && !state.folderId) state.folderId = state.rootId;
