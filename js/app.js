@@ -2514,6 +2514,7 @@ function bindPanelDrag(body) {
     startH = panel.getBoundingClientRect().height;
     drag.setPointerCapture?.(e.pointerId);
     drag.classList.add('is-dragging');
+    panel.classList.add('is-live-drag');
     e.preventDefault();
   });
   drag.addEventListener('pointermove', (e) => {
@@ -2524,6 +2525,7 @@ function bindPanelDrag(body) {
     if (!dragging) return;
     dragging = false;
     drag.classList.remove('is-dragging');
+    panel.classList.remove('is-live-drag');
     personal.panelH = Math.round(panel.getBoundingClientRect().height);
     saveJSON(PERSONAL_KEY, personal);
     panel.style.height = `${clamp(personal.panelH, minH, maxH())}px`;
