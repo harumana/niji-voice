@@ -1,5 +1,5 @@
 /* NIJI VOICE service worker — app shell offline, network-first updates */
-const CACHE = 'niji-voice-v4';
+const CACHE = 'niji-voice-v5';
 const SHELL = [
   './',
   './index.html',
@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/sw.js')) return;
 
   event.respondWith(
-    fetch(req)
+    fetch(new Request(req, { cache: 'no-cache' }))
       .then((res) => {
         if (res && res.ok) {
           const copy = res.clone();
