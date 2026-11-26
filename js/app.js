@@ -1136,6 +1136,25 @@ function collectionGroups(liver) {
   return { byYear, groups: byYear.flatMap((s) => s.groups) };
 }
 
+/** short label for a liver chip: the Korean part when the name carries it */
+function liverShort(name) {
+  const m = String(name || '').match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : String(name || '');
+}
+
+/** quick liver switcher across the top of the collection */
+function liverChipBar() {
+  const available = collectLivers();
+  if (available.length < 2) return '';
+  const cur = currentLiver(available);
+  return `<div class="liver-chips" role="tablist" aria-label="라이버 선택">${available
+    .map(([name, n]) => `<button type="button" role="tab" aria-selected="${name === cur}" class="liver-chip ${name === cur ? 'is-on' : ''}" data-act="sel-liver" data-liver="${esc(name)}">
+      <span class="chip-av" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
+      <span class="chip-name">${esc(liverShort(name))}</span>
+      <span class="chip-n">${n}</span>
+    </button>`).join('')}</div>`;
+}
+
 /** the one liver the collection is showing */
 function displayLivers() {
   const available = collectLivers();
@@ -1191,7 +1210,7 @@ function renderCollection() {
     return `<section class="col-section">${heading}${blocks}</section>`;
   }).join('');
 
-  area.innerHTML = folderModeBar('collection', totalFiles) + head + sections;
+  area.innerHTML = folderModeBar('collection', totalFiles) + liverChipBar() + head + sections;
   $('#listFoot').textContent = '';
   prefetchSeriesCovers(flat);
 }
@@ -3067,6 +3086,19 @@ function onListClick(e) {
   if (act === 'demo') { useDemo(); return; }
   if (act === 'select-mode') { toggleSelectMode(); return; }
   if (act === 'pick-liver') { openLiverSheet(); return; }
+  if (act === 'sel-liver') {
+    const name = action.dataset.liver || '';
+    if (!name) return;
+    state.collectionLiver = name;
+    personal.lastLiver = name;
+    saveJSON(PERSONAL_KEY, personal);
+    state.folderMode = 'collection';
+    state.openSeries = null;
+    renderList();
+    const sc = $('#scroller');
+    if (sc) sc.scrollTo({ top: 0 });
+    return;
+  }
   if (act === 'open-series') {
     state.openSeries = {
       title: action.dataset.title || '',
