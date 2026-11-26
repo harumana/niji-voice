@@ -84,6 +84,7 @@ const state = {
   sort: 'recent',
   filters: { year: new Set(), liver: new Set(), tag: new Set() },
   openFilters: new Set(),
+  filterBarOpen: false,
   selectMode: false,
   selected: new Set(),
   folderId: null,
@@ -346,7 +347,7 @@ function renderTabs() {
     b.classList.toggle('is-on', on);
     if (b.dataset.view === 'notes') {
       const n = totalNewNotes();
-      b.textContent = n ? `메모 모아보기 ${n}` : '메모 모아보기';
+      b.textContent = n ? `메모 ${n}` : '메모';
       b.classList.toggle('has-new', n > 0);
     }
   }
@@ -385,12 +386,19 @@ function renderFilters() {
   const total = state.filters.year.size + state.filters.liver.size + state.filters.tag.size;
   $('#btnClearFilters').hidden = !total;
   $('#btnClearFilters').textContent = total ? `필터 초기화 (${total}) ✕` : '필터 초기화 ✕';
+
+  const filtersEl = $('#filters');
+  if (filtersEl) filtersEl.classList.toggle('is-open', !!state.filterBarOpen);
+  const ft = $('#btnFilterToggle');
+  if (ft) ft.classList.toggle('is-on', total > 0);
+  const fc = $('#filterCount');
+  if (fc) { fc.hidden = !total; fc.textContent = total ? String(total) : ''; }
 }
 
 function renderControlbar() {
   const on = state.selectMode;
   $('#btnSelectMode').classList.toggle('is-on', on);
-  $('#btnSelectMode').querySelector('span:last-child').textContent = on ? '선택 해제' : '선택 모드';
+  $('#btnSelectMode').querySelector('span:last-child').textContent = on ? '선택 해제' : '선택';
   $('#sortLabel').textContent = state.sort === 'name' ? '이름순' : '최신순';
   $('#btnPlayAll').querySelector('span').textContent = state.view === 'folders' ? '이 폴더 재생' : '전체 재생';
 }
@@ -414,36 +422,44 @@ function cardHTML(f, { playlist = false } = {}) {
   const tags = shared.tagsOf(f.id);
   const notes = shared.notesOf(f.id).length;
   const newN = newNotesFor(f.id);
-  const lyrics = parsedCache.get(f.id);
+  const parsed = parsedCache.get(f.id);
+  const hasLyrics = !!parsed?.lyrics?.length;
   const saved = offlineIds.has(f.id);
-  const showYear = f.year && f.year !== '';
+  const cover = parsed?.coverUrl || '';
+
+  const meta = [];
+  if (f.liver) meta.push(`<span>${esc(f.liver)}</span>`);
+  if (f.year) meta.push(`<span>${esc(f.year)}</span>`);
+  if (f.size) meta.push(`<span>${fmtBytes(f.size)}</span>`);
+  if (tags.length) meta.push(`<span class="tg">${esc(tags.slice(0, 2).map((t) => '#' + t).join(' '))}</span>`);
+
+  const status = [];
+  if (notes) status.push(`<span class="st"><svg><use href="#i-memo"/></svg>${notes}</span>`);
+  if (hasLyrics) status.push('<span class="st"><svg><use href="#i-lyrics"/></svg></span>');
+  if (saved) status.push('<span class="st is-on"><svg><use href="#i-check"/></svg></span>');
+  if (newN) status.push(`<span class="newbadge">NEW ${newN}</span>`);
+
   return `
   <article class="card ${playing ? 'is-playing' : ''} ${selected ? 'is-selected' : ''} ${state.selectMode ? 'is-selecting' : ''}" data-id="${esc(f.id)}">
     ${state.selectMode ? `<span class="card-sel">${selected ? '<svg><use href="#i-check"/></svg>' : ''}</span>` : ''}
     <button class="cbtn-play" data-act="play" aria-label="재생">
-      <svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg>
+      <span class="cov">${cover ? `<img src="${cover}" alt="" loading="lazy" />` : ''}</span>
+      ${cover ? '' : '<svg class="cov-ph"><use href="#i-mic"/></svg>'}
+      <span class="cov-ov"><svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg></span>
     </button>
     <div class="card-body" data-act="open">
-      <div class="card-title-row">
-        <span class="card-title">${esc(displayName(f.name))}</span>
-      </div>
-      <div class="card-badges">
-        ${f.liver ? `<span class="badge">${esc(f.liver)}</span>` : ''}
-        ${showYear ? `<span class="badge year">${esc(f.year)}</span>` : ''}
-        ${tags.map((t) => `<span class="badge tag" data-act="untag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
-        <button class="mini" data-act="tag"><svg><use href="#i-tag"/></svg>태그</button>
-        <button class="mini ${notes ? 'has-content' : ''}" data-act="memo"><svg><use href="#i-memo"/></svg>${notes ? `메모 ${notes}` : '메모'}${newN ? '<span class="ndot"></span>' : ''}</button>
-        <button class="mini ${lyrics?.lyrics?.length ? 'has-content' : ''}" data-act="lyrics"><svg><use href="#i-lyrics"/></svg>자막</button>
-        ${newN ? `<span class="newbadge">NEW ${newN}</span>` : ''}
+      <div class="card-title">${esc(displayName(f.name))}</div>
+      <div class="card-sub">
+        <span class="sub-meta">${meta.join('<i class="dot"></i>')}</span>
+        ${status.length ? `<span class="sub-status">${status.join('')}</span>` : ''}
       </div>
     </div>
     <div class="card-side">
       <button class="star ${isFav(f.id) ? 'is-on' : ''}" data-act="fav" aria-label="즐겨찾기">
         <svg><use href="${isFav(f.id) ? '#i-star-fill' : '#i-star'}"/></svg>
       </button>
-      <span class="card-size">${fmtBytes(f.size)}</span>
-      <button class="offbtn ${saved ? 'is-saved' : ''}" data-act="offline" title="${saved ? '오프라인 저장됨 — 눌러서 삭제' : '오프라인 저장'}" aria-label="오프라인 저장">
-        <svg><use href="${saved ? '#i-check' : '#i-download'}"/></svg>
+      <button class="morebtn" data-act="more" aria-label="더보기">
+        <svg><use href="#i-more"/></svg>
       </button>
     </div>
   </article>`;
@@ -519,12 +535,8 @@ function renderPlaylists() {
         <button class="mini" data-act="pl-back">‹ 재생목록</button>
         <span>${esc(pl.name)} · ${files.length}개</span>
       </div>
-      ${files.length ? files.map((f) => `
-        <div class="pl-item" data-id="${esc(f.id)}">
-          ${cardHTML(f, { playlist: true })}
-          <button class="pl-remove" data-act="pl-remove" data-id="${esc(f.id)}">빼기</button>
-        </div>`).join('')
-        : emptyHTML({ icon: '🎵', title: '아직 곡이 없어요', desc: '파일 카드에서 재생목록에 추가할 수 있어요.' })}
+      ${files.length ? files.map((f) => cardHTML(f, { playlist: true })).join('')
+        : emptyHTML({ icon: '🎵', title: '아직 곡이 없어요', desc: '곡의 ⋯ 메뉴에서 재생목록에 추가할 수 있어요.' })}
       <div class="btnrow" style="margin:16px 4px 0">
         <button class="btn-secondary" data-act="pl-play">전체 재생</button>
         <button class="btn-secondary btn-danger" data-act="pl-delete">재생목록 삭제</button>
@@ -853,45 +865,49 @@ function playFile(file, { list = null, startAt = 0 } = {}) {
 function updatePlayerUI(st) {
   const bar = $('#playerBar');
   const cur = st.current;
-  bar.classList.toggle('is-empty', !cur);
+  if (bar) bar.classList.toggle('is-empty', !cur);
 
   if (!cur) {
-    $('#pTitle').textContent = '재생 중인 파일 없음';
-    $('#pSub').textContent = '전체 재생을 눌러 시작해 보세요';
-    $('#pThumb').innerHTML = '<svg><use href="#i-mic"/></svg>';
-    $('#tCur').textContent = '00:00';
-    $('#tDur').textContent = '-00:00';
+    const t = $('#pTitle');
+    if (t) t.textContent = '재생 중인 곡 없음';
+    const s = $('#pSub');
+    if (s) s.textContent = '전체 재생을 눌러 시작해 보세요';
+    const th = $('#pThumb');
+    if (th) th.innerHTML = '<svg><use href="#i-mic"/></svg>';
     setSeek(0, 0, true);
   } else {
     const p = parsedCache.get(cur.id) || (cur.demo ? demoParsed(cur) : null) || {};
-    $('#pTitle').textContent = p.title || displayName(cur.name);
+    const title = $('#pTitle');
+    if (title) title.textContent = p.title || displayName(cur.name);
     const bits = [];
     if (p.artist) bits.push(p.artist);
     if (st.queueLength > 1) bits.push(`${player.queue.findIndex((f) => f.id === cur.id) + 1}/${st.queueLength}`);
-    $('#pSub').textContent = bits.join(' · ') || cur.liver || '';
-    $('#pThumb').innerHTML = p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>';
-    $('#tCur').textContent = fmtTime(st.currentTime);
-    const dur = st.duration || p.duration || shared.data.durations?.[cur.id] || 0;
-    $('#tDur').textContent = dur ? '-' + fmtTime(Math.max(0, dur - st.currentTime)) : '-00:00';
+    const sub = $('#pSub');
+    if (sub) sub.textContent = bits.join(' · ') || cur.liver || '';
+    const thumb = $('#pThumb');
+    if (thumb) thumb.innerHTML = p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>';
+    const dur = st.duration || p.duration || shared?.data?.durations?.[cur.id] || 0;
     setSeek(st.currentTime, dur || 0, false);
     if (dur > 0 && shared && st.duration > 0 && Math.abs((shared.data.durations?.[cur.id] || 0) - st.duration) > 1) {
       shared.setDuration?.(cur.id, st.duration);
     }
   }
 
-  $('#btnPlay').innerHTML = `<svg><use href="${st.isPlaying ? '#i-pause' : '#i-play'}"/></svg>`;
-  $('#btnShuffle').classList.toggle('is-on', !!st.shuffle);
-  $('#btnAB').classList.toggle('is-set', st.ab.a != null);
+  const playBtn = $('#btnPlay');
+  if (playBtn) playBtn.innerHTML = `<svg><use href="${st.isPlaying ? '#i-pause' : '#i-play'}"/></svg>`;
 
-  $('#pFlags').innerHTML = [
+  const flags = $('#pFlags');
+  if (flags) flags.innerHTML = [
     st.loading ? '<span class="pflag">불러오는 중…</span>' : '',
     st.ab.a != null ? `<span class="pflag">A–B ${fmtTime(st.ab.a)} ~ ${st.ab.b != null ? fmtTime(st.ab.b) : '…'}<button data-act="ab-clear">✕</button></span>` : '',
     st.sleep.mode ? `<span class="pflag timer">${st.sleep.mode === 'track' ? '트랙 끝나면 정지' : '취침 ' + fmtLeft(st.sleep.endsAt)}<button data-act="sleep-clear">✕</button></span>` : '',
     cur && offlineIds.has(cur.id) ? '<span class="pflag">오프라인</span>' : '',
   ].join('');
-
   // live lyric highlight in the now-playing sheet
-  if (ui.sheet === 'now' && cur) updateNowLyric(st.currentTime);
+  if (ui.sheet === 'now' && cur) {
+    updateNowSheet(st);
+    updateNowLyric(st.currentTime);
+  }
   // list play-state
   syncCardStates();
 }
@@ -906,11 +922,21 @@ function fmtLeft(endsAt) {
 
 let dragging = false;
 function setSeek(t, dur, apply) {
-  if (dragging && !apply) return;
-  const el = $('#seek');
   const pct = dur > 0 ? Math.min(100, (t / dur) * 100) : 0;
-  if (!dragging || apply) el.value = String(dur > 0 ? Math.round((t / dur) * 1000) : 0);
-  el.style.setProperty('--pct', `${pct}%`);
+  const bar = $('#playerBar');
+  if (bar) bar.style.setProperty('--pct', `${pct}%`);
+  const prog = $('#pProg');
+  if (prog) prog.style.width = `${pct}%`;
+  const el = $('#seek');
+  if (el) {
+    if (!dragging || apply) el.value = String(dur > 0 ? Math.round((t / dur) * 1000) : 0);
+    el.style.setProperty('--pct', `${pct}%`);
+  }
+  const np = $('#npSeek');
+  if (np) {
+    if (!dragging || apply) np.value = String(dur > 0 ? Math.round((t / dur) * 1000) : 0);
+    np.style.setProperty('--pct', `${pct}%`);
+  }
 }
 
 let lastSync = { id: null, playing: null };
@@ -933,9 +959,9 @@ function syncCardStates() {
 }
 
 /* ─────────────────────────── sheets ─────────────────────────── */
-const ui = { sheet: null, lyricIdx: -1, sheetFile: null };
+const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics' };
 
-function openSheet(title, html, { tall = false } = {}) {
+function openSheet(title, html, { tall = false, full = false } = {}) {
   $('#sheetTitle').textContent = title;
   // replace the body node so listeners from the previous sheet are dropped
   const old = $('#sheetBody');
@@ -944,7 +970,8 @@ function openSheet(title, html, { tall = false } = {}) {
   body.id = 'sheetBody';
   old.replaceWith(body);
   body.innerHTML = html;
-  $('#sheet').classList.toggle('is-tall', tall);
+  $('#sheet').classList.toggle('is-tall', tall && !full);
+  $('#sheet').classList.toggle('is-full', !!full);
   $('#overlay').hidden = false;
   body.scrollTop = 0;
   document.body.style.overflow = 'hidden';
@@ -1364,53 +1391,260 @@ function openLyricsSheet(file) {
   });
 }
 
-/* now playing */
+/* now playing — full-screen player */
+function currentParsed(file) {
+  return parsedCache.get(file.id) || (file.demo ? demoParsed(file) : {}) || {};
+}
+
+function npMemoHTML(file) {
+  const notes = shared.notesOf(file.id);
+  const t = player?.current?.id === file.id ? (player.audio.currentTime || 0) : 0;
+  return `
+    <div class="np-memo-compose">
+      <button type="button" class="stamp" data-act="np-stamp" data-t="${t}" title="현재 재생 위치">${fmtTime(t)}</button>
+      <input id="npMemoInput" type="text" placeholder="이 지점에 남길 메모…" maxlength="200" />
+      <button type="button" class="send" data-act="np-add-memo">남기기</button>
+    </div>
+    <div id="npMemoList">
+      ${notes.length ? notes.map((n) => `
+        <div class="memo" data-note="${esc(n.id)}">
+          <button type="button" class="memo-time" data-act="np-seek" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
+          <div class="memo-body">
+            <div class="memo-text">${esc(n.text)}</div>
+            <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
+              ${n.author === personal.nickname ? `<button type="button" class="memo-del" data-act="np-del" data-id="${esc(n.id)}">삭제</button>` : ''}
+            </div>
+          </div>
+        </div>`).join('')
+        : '<div class="note" style="padding:14px 4px">아직 메모가 없어요. 재생 중 원하는 지점에서 남겨 보세요.</div>'}
+    </div>`;
+}
+
+function npPanelHTML(file, seg) {
+  const p = currentParsed(file);
+  if (seg === 'memo') return npMemoHTML(file);
+  return `
+    <div class="np-panel-head">
+      <span>가사</span>
+      <button type="button" data-act="np-edit-lyrics">자막 편집</button>
+    </div>
+    ${p.lyrics?.length ? `<div class="lyrics" id="sheetLyrics">${p.lyrics.map((l, i) => `
+      <button class="lrc-line" data-act="np-seek" data-t="${l.time}" data-i="${i}">
+        <span class="orig">${esc(l.orig)}</span>${l.trans ? `<span class="trans">${esc(l.trans)}</span>` : ''}
+      </button>`).join('')}</div>`
+      : `<div class="lrc-empty">${p.plainLyrics ? esc(p.plainLyrics) : '이 곡에는 타임싱크 자막이 없어요.'}</div>`}`;
+}
+
 function openNowPlaying() {
   if (!player?.current) { toast('재생 중인 곡이 없어요'); return; }
   const file = player.current;
-  const p = parsedCache.get(file.id) || (file.demo ? demoParsed(file) : {}) || {};
+  const p = currentParsed(file);
   const tags = shared.tagsOf(file.id);
-  const notes = shared.notesOf(file.id);
   ui.sheet = 'now';
   ui.sheetFile = file.id;
   ui.lyricIdx = -1;
+  ui.seg = 'lyrics';
   const body = openSheet('지금 재생 중', `
     <div class="np">
       <div class="np-cover" id="npCover">${p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</div>
-      <div class="np-title">${esc(p.title || displayName(file.name))}</div>
-      <div class="np-sub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
-      ${tags.length ? `<div class="np-tags">${tags.map((t) => `<span class="badge tag">${esc(t)}</span>`).join('')}</div>` : ''}
-      <div class="chiprow" style="justify-content:center;margin:2px 0 0">
-        <button class="chip" data-act="np-tag">+ 태그</button>
-        <button class="chip" data-act="np-memo">💬 메모 ${notes.length || ''}</button>
-        <button class="chip" data-act="np-sub">자막</button>
-        <button class="chip" data-act="np-offline">${offlineIds.has(file.id) ? '오프라인 저장됨' : '오프라인 저장'}</button>
+      <div class="np-head">
+        <div class="np-info">
+          <div class="np-title" id="npTitle">${esc(p.title || displayName(file.name))}</div>
+          <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
+          ${tags.length ? `<div class="np-tags">${tags.map((t) => `<span class="badge tag">${esc(t)}</span>`).join('')}</div>` : ''}
+        </div>
+        <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
+          <svg><use href="${isFav(file.id) ? '#i-star-fill' : '#i-star'}"/></svg>
+        </button>
       </div>
+      <div class="np-seekwrap">
+        <input id="npSeek" type="range" min="0" max="1000" step="1" value="0" aria-label="재생 위치" />
+        <div class="np-times"><span id="npCur">00:00</span><span id="npDur">-00:00</span></div>
+      </div>
+      <div class="np-ctrl">
+        <button type="button" id="npShuffle" class="${player.shuffle ? 'is-on' : ''}" data-act="np-shuffle" aria-label="셔플"><svg><use href="#i-shuffle"/></svg></button>
+        <button type="button" data-act="np-prev" aria-label="이전 곡"><svg><use href="#i-prev"/></svg></button>
+        <button type="button" class="np-play" id="npPlay" data-act="np-play" aria-label="재생/일시정지"><svg><use href="${player.isPlaying ? '#i-pause' : '#i-play'}"/></svg></button>
+        <button type="button" data-act="np-next" aria-label="다음 곡"><svg><use href="#i-next"/></svg></button>
+        <button type="button" class="np-ab ${player.ab.a != null ? 'is-set' : ''}" id="npAB" data-act="np-ab" aria-label="A–B 구간 반복"><span>A·B</span></button>
+      </div>
+      <div class="np-pills">
+        <button type="button" class="np-pill ${player.sleep.mode ? 'is-on' : ''}" id="npSleep" data-act="np-sleep"><svg><use href="#i-moon"/></svg>취침</button>
+        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>대기열</button>
+        <button type="button" class="np-pill" data-act="np-more"><svg><use href="#i-more"/></svg>더보기</button>
+      </div>
+      <div class="np-optrow" id="npSleepOpt" hidden>
+        ${[15, 30, 60].map((m) => `<button type="button" class="chip" data-act="np-sleep-set" data-min="${m}">${m}분</button>`).join('')}
+        <button type="button" class="chip" data-act="np-sleep-set" data-min="track">트랙 끝</button>
+        <button type="button" class="chip" data-act="np-sleep-set" data-min="off">해제</button>
+      </div>
+      <div class="np-seg" id="npSeg">
+        <button type="button" data-seg="lyrics" class="is-on">가사</button>
+        <button type="button" data-seg="memo">메모</button>
+      </div>
+      <div class="np-panel" id="npPanel">${npPanelHTML(file, 'lyrics')}</div>
     </div>
-    ${p.lyrics?.length ? `<div class="lyrics" id="sheetLyrics">${p.lyrics.map((l, i) => `
-      <button class="lrc-line" data-act="seek" data-t="${l.time}" data-i="${i}">
-        <span class="orig">${esc(l.orig)}</span>${l.trans ? `<span class="trans">${esc(l.trans)}</span>` : ''}
-      </button>`).join('')}</div>` : `<div class="lrc-empty">${p.plainLyrics ? esc(p.plainLyrics) : '이 곡에는 자막이 없어요.'}</div>`}
-    <div class="field" style="margin-top:10px">
-      <label>이 곡의 메모</label>
-      ${notes.length ? notes.map((n) => `<div class="memo"><button class="memo-time" data-act="seek" data-t="${n.t ?? 0}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
-        <div class="memo-body"><div class="memo-text">${esc(n.text)}</div><div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}</div></div></div>`).join('')
-        : '<div class="note">아직 메모가 없어요.</div>'}
-    </div>
-  `, { tall: true });
+  `, { full: true });
 
+  updateNowSheet({
+    current: file,
+    isPlaying: player.isPlaying,
+    currentTime: player.audio.currentTime || 0,
+    duration: Number.isFinite(player.audio.duration) ? player.audio.duration : 0,
+    ab: { ...player.ab },
+    sleep: { ...player.sleep },
+    shuffle: player.shuffle,
+  });
   updateNowLyric(player.audio.currentTime || 0);
 
-  body.addEventListener('click', (e) => {
+  const npSeek = $('#npSeek');
+  if (npSeek) {
+    npSeek.addEventListener('input', () => {
+      dragging = true;
+      const dur = player.audio.duration || 0;
+      const pct = Number(npSeek.value) / 10;
+      npSeek.style.setProperty('--pct', `${pct}%`);
+      const curEl = $('#npCur');
+      if (curEl && dur) curEl.textContent = fmtTime((Number(npSeek.value) / 1000) * dur);
+    });
+    npSeek.addEventListener('change', () => {
+      const dur = player.audio.duration || 0;
+      if (dur) player.seek((Number(npSeek.value) / 1000) * dur);
+      dragging = false;
+    });
+  }
+
+  for (const btn of $$('#npSeg button', body)) {
+    btn.addEventListener('click', () => {
+      const seg = btn.dataset.seg;
+      ui.seg = seg;
+      for (const x of $$('#npSeg button', body)) x.classList.toggle('is-on', x === btn);
+      const panel = $('#npPanel');
+      if (panel) panel.innerHTML = npPanelHTML(file, seg);
+      if (seg === 'lyrics') {
+        ui.lyricIdx = -1;
+        updateNowLyric(player.audio.currentTime || 0);
+      }
+    });
+  }
+
+  body.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
-    if (act === 'seek') { player.seek(Number(b.dataset.t)); if (!player.isPlaying) player.toggle(); }
-    if (act === 'np-tag') openTagSheet(file.id);
-    if (act === 'np-memo') openMemoSheet(file);
-    if (act === 'np-sub') openLyricsSheet(file);
-    if (act === 'np-offline') toggleOffline(file);
+    if (act === 'np-fav') {
+      setFav(file.id, !isFav(file.id));
+      const on = isFav(file.id);
+      b.classList.toggle('is-on', on);
+      const use = b.querySelector('use');
+      if (use) use.setAttribute('href', on ? '#i-star-fill' : '#i-star');
+      renderList();
+      renderSelectionBar();
+      return;
+    }
+    if (act === 'np-play') { if (player.current?.id === file.id) player.toggle(); else playFile(file); return; }
+    if (act === 'np-prev') { player.prev(); return; }
+    if (act === 'np-next') { player.next(); return; }
+    if (act === 'np-shuffle') { player.setShuffle(!player.shuffle); toast(player.shuffle ? '셔플 켜짐' : '셔플 꺼짐'); return; }
+    if (act === 'np-ab') { cycleABWithToast(); return; }
+    if (act === 'np-sleep') {
+      const row = $('#npSleepOpt');
+      if (row) row.hidden = !row.hidden;
+      return;
+    }
+    if (act === 'np-sleep-set') {
+      const v = b.dataset.min;
+      if (v === 'off') { player.clearSleep(); toast('타이머를 해제했어요'); }
+      else if (v === 'track') { player.setSleep('track'); toast('현재 트랙이 끝나면 정지해요'); }
+      else { player.setSleep(Number(v)); toast(`${v}분 뒤 정지해요`); }
+      const row = $('#npSleepOpt');
+      if (row) row.hidden = true;
+      return;
+    }
+    if (act === 'np-queue') { openQueue(); return; }
+    if (act === 'np-more') { openMoreSheet(file); return; }
+    if (act === 'np-edit-lyrics') { openLyricsSheet(file); return; }
+    if (act === 'np-seek') {
+      const t = b.dataset.t;
+      if (t !== undefined && t !== '') {
+        player.seek(Number(t));
+        if (!player.isPlaying) player.toggle();
+      }
+      return;
+    }
+    if (act === 'np-stamp') {
+      const t = player?.current?.id === file.id ? player.audio.currentTime || 0 : 0;
+      b.dataset.t = String(t);
+      b.textContent = fmtTime(t);
+      return;
+    }
+    if (act === 'np-add-memo') {
+      const inp = $('#npMemoInput');
+      const text = (inp?.value || '').trim();
+      if (!text) { toast('메모 내용을 입력해 주세요.', { err: true }); return; }
+      const stampEl = body.querySelector('[data-act="np-stamp"]');
+      const t = stampEl ? Number(stampEl.dataset.t || 0) : 0;
+      await shared.addNote(file.id, { author: personal.nickname, text, t });
+      toast('메모를 남겼어요');
+      renderList();
+      renderTabs();
+      const panel = $('#npPanel');
+      if (panel) panel.innerHTML = npPanelHTML(file, 'memo');
+      return;
+    }
+    if (act === 'np-del') {
+      await shared.removeNote(file.id, b.dataset.id);
+      toast('메모를 지웠어요');
+      renderList();
+      const panel = $('#npPanel');
+      if (panel) panel.innerHTML = npPanelHTML(file, 'memo');
+      return;
+    }
   });
+}
+
+function updateNowSheet(st) {
+  const cur = st.current;
+  if (!cur) return;
+  const p = currentParsed(cur);
+  const dur = st.duration || p.duration || shared?.data?.durations?.[cur.id] || 0;
+  const pct = dur > 0 ? Math.min(100, (st.currentTime / dur) * 100) : 0;
+  const seek = $('#npSeek');
+  if (seek) {
+    if (!dragging) seek.value = String(dur > 0 ? Math.round((st.currentTime / dur) * 1000) : 0);
+    seek.style.setProperty('--pct', `${pct}%`);
+  }
+  const curEl = $('#npCur');
+  if (curEl) curEl.textContent = fmtTime(st.currentTime);
+  const durEl = $('#npDur');
+  if (durEl) durEl.textContent = dur ? '-' + fmtTime(Math.max(0, dur - st.currentTime)) : '-00:00';
+  const playUse = $('#npPlay use');
+  if (playUse) playUse.setAttribute('href', st.isPlaying ? '#i-pause' : '#i-play');
+  const sh = $('#npShuffle');
+  if (sh) sh.classList.toggle('is-on', !!st.shuffle);
+  const ab = $('#npAB');
+  if (ab) ab.classList.toggle('is-set', st.ab.a != null);
+  const sl = $('#npSleep');
+  if (sl) sl.classList.toggle('is-on', !!st.sleep.mode);
+  const title = $('#npTitle');
+  if (title) title.textContent = p.title || displayName(cur.name);
+  const sub = $('#npSub');
+  if (sub) sub.textContent = [p.artist, p.album].filter(Boolean).join(' · ') || cur.liver || '';
+  const cov = $('#npCover');
+  if (cov) {
+    const url = p.coverUrl || '';
+    const img = cov.querySelector('img');
+    if (url && (!img || img.getAttribute('src') !== url)) cov.innerHTML = `<img src="${url}" alt="" />`;
+    else if (!url && !img) cov.innerHTML = '<svg><use href="#i-mic"/></svg>';
+  }
+}
+
+function cycleABWithToast() {
+  if (!player?.current) { toast('먼저 곡을 재생해 주세요.'); return; }
+  const r = player.cycleAB();
+  if (r.step === 'a') toast(`A 지점 ${fmtTime(r.t)} — 끝 지점에서 한 번 더 누르세요`);
+  else if (r.step === 'b') toast(`A–B 반복 ${fmtTime(player.ab.a)} ~ ${fmtTime(player.ab.b)}`);
+  else toast('A–B 반복을 해제했어요');
 }
 
 function updateNowLyric(time) {
@@ -1520,6 +1754,89 @@ function openPlaylistPicker(fileIds) {
   });
 }
 
+/* per-track action sheet (⋯) */
+function openMoreSheet(file, { playlist = false } = {}) {
+  ui.sheet = 'more';
+  const p = currentParsed(file);
+  const cover = p.coverUrl || '';
+  const saved = offlineIds.has(file.id);
+  const notes = shared.notesOf(file.id).length;
+  const tags = shared.tagsOf(file.id);
+  const isCurrent = player?.current?.id === file.id;
+  const body = openSheet('더보기', `
+    <div class="act-head">
+      <span class="act-cov">${cover ? `<img src="${cover}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</span>
+      <span class="act-meta">
+        <div class="act-title">${esc(p.title || displayName(file.name))}</div>
+        <div class="act-sub">${esc([file.liver, file.year, fmtBytes(file.size)].filter(Boolean).join(' · '))}</div>
+      </span>
+    </div>
+    <button type="button" class="act-item" data-act="m-tag">
+      <span class="ai"><svg><use href="#i-tag"/></svg></span>
+      <span class="al">태그</span>
+      <span class="av">${tags.length ? `${tags.length}개` : '없음'}</span>
+    </button>
+    <button type="button" class="act-item" data-act="m-memo">
+      <span class="ai"><svg><use href="#i-memo"/></svg></span>
+      <span class="al">타임스탬프 메모</span>
+      <span class="av">${notes ? `${notes}개` : ''}</span>
+    </button>
+    <button type="button" class="act-item" data-act="m-lyrics">
+      <span class="ai"><svg><use href="#i-lyrics"/></svg></span>
+      <span class="al">자막</span>
+      <span class="av">${p.lyrics?.length ? '있음' : ''}</span>
+    </button>
+    <button type="button" class="act-item ${saved ? 'is-on' : ''}" data-act="m-offline">
+      <span class="ai"><svg><use href="${saved ? '#i-check' : '#i-download'}"/></svg></span>
+      <span class="al">${saved ? '오프라인 저장 삭제' : '오프라인 저장'}</span>
+      <span class="av">${saved ? '완료' : ''}</span>
+    </button>
+    <button type="button" class="act-item" data-act="m-pl">
+      <span class="ai"><svg><use href="#i-list"/></svg></span>
+      <span class="al">재생목록에 추가</span>
+    </button>
+    ${playlist ? `<button type="button" class="act-item danger" data-act="m-pl-remove">
+      <span class="ai"><svg><use href="#i-close"/></svg></span>
+      <span class="al">이 재생목록에서 빼기</span>
+    </button>` : ''}
+    <button type="button" class="act-item" data-act="m-play">
+      <span class="ai"><svg><use href="${isCurrent ? '#i-pause' : '#i-play'}"/></svg></span>
+      <span class="al">${isCurrent ? '재생 / 일시정지' : '이 곡 재생'}</span>
+    </button>
+  `);
+
+  body.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'm-tag') { openTagSheet(file.id); return; }
+    if (act === 'm-memo') { openMemoSheet(file); return; }
+    if (act === 'm-lyrics') { openLyricsSheet(file); return; }
+    if (act === 'm-pl') { openPlaylistPicker([file.id]); return; }
+    if (act === 'm-pl-remove') { removeFromPlaylist(file.id); return; }
+    if (act === 'm-offline') {
+      await toggleOffline(file);
+      openMoreSheet(file, { playlist });
+      return;
+    }
+    if (act === 'm-play') {
+      closeSheet();
+      if (player.current?.id === file.id) player.toggle();
+      else playFile(file);
+    }
+  });
+}
+
+function removeFromPlaylist(fileId) {
+  const pl = personal.playlists.find((p) => p.id === state.openPlaylistId);
+  if (!pl) return;
+  pl.fileIds = pl.fileIds.filter((id) => id !== fileId);
+  saveJSON(PERSONAL_KEY, personal);
+  closeSheet();
+  renderList();
+  toast('재생목록에서 뺐어요');
+}
+
 /* ─────────────────────────── offline ─────────────────────────── */
 async function toggleOffline(file) {
   if (file.demo) { toast('데모 곡은 이미 오프라인에서 재생돼요.'); return; }
@@ -1583,6 +1900,12 @@ async function startIndexing() {
 
 /* ─────────────────────────── events ─────────────────────────── */
 function bindEvents() {
+  const on = (sel, ev, fn, opts) => {
+    const el = $(sel);
+    if (el) el.addEventListener(ev, fn, opts);
+    return el;
+  };
+
   $('#viewTabs').addEventListener('click', (e) => {
     const b = e.target.closest('.tab');
     if (!b) return;
@@ -1622,6 +1945,12 @@ function bindEvents() {
     renderFilters(); renderList();
   });
 
+  on('#btnFilterToggle', 'click', () => {
+    state.filterBarOpen = !state.filterBarOpen;
+    if (!state.filterBarOpen) state.openFilters.clear();
+    renderFilters();
+  });
+
   $('#searchInput').addEventListener('input', debounce((e) => {
     state.search = e.target.value;
     $('#btnClearSearch').hidden = !state.search;
@@ -1644,6 +1973,9 @@ function bindEvents() {
   $('#btnSettings').addEventListener('click', openSettings);
   $('#btnNick').addEventListener('click', openNickname);
   $('#connState').addEventListener('click', openSettings);
+  $('#connState').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettings(); }
+  });
 
   $('#btnSelectMode').addEventListener('click', () => {
     state.selectMode = !state.selectMode;
@@ -1671,7 +2003,7 @@ function bindEvents() {
   $('#selBar').addEventListener('click', onSelAction);
 
   /* player */
-  $('#btnPlay').addEventListener('click', () => {
+  on('#btnPlay', 'click', () => {
     if (!player.current) {
       const files = visibleFiles();
       if (files.length) player.playFiles(files, 0);
@@ -1681,38 +2013,13 @@ function bindEvents() {
     if (!player.loaded) { playFile(player.current); return; }
     player.toggle();
   });
-  $('#btnPrev').addEventListener('click', () => player.prev());
-  $('#btnNext').addEventListener('click', () => player.next());
-  $('#btnShuffle').addEventListener('click', () => { player.setShuffle(!player.shuffle); toast(player.shuffle ? '셔플 켜짐' : '셔플 꺼짐'); });
-  $('#btnAB').addEventListener('click', () => {
-    if (!player.current) { toast('먼저 곡을 재생해 주세요.'); return; }
-    const r = player.cycleAB();
-    if (r.step === 'a') toast(`A 지점 ${fmtTime(r.t)} — 끝 지점에서 한 번 더 누르세요`);
-    else if (r.step === 'b') toast(`A–B 반복 ${fmtTime(player.ab.a)} ~ ${fmtTime(player.ab.b)}`);
-    else toast('A–B 반복을 해제했어요');
-  });
-  $('#btnLyrics').addEventListener('click', () => { if (player.current) openLyricsSheet(player.current); else toast('재생 중인 곡이 없어요'); });
-  $('#btnTimer').addEventListener('click', openSleep);
-  $('#btnMemo').addEventListener('click', () => { if (player.current) openMemoSheet(player.current); else toast('재생 중인 곡이 없어요'); });
-  $('#btnQueue').addEventListener('click', openQueue);
-  $('#btnNow').addEventListener('click', openNowPlaying);
-  $('#pFlags').addEventListener('click', (e) => {
+  on('#btnNext', 'click', () => player.next());
+  on('#btnNow', 'click', openNowPlaying);
+  on('#pFlags', 'click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     if (b.dataset.act === 'ab-clear') { player.clearAB(); toast('A–B 반복을 해제했어요'); }
     if (b.dataset.act === 'sleep-clear') { player.clearSleep(); toast('타이머를 해제했어요'); }
-  });
-
-  const seek = $('#seek');
-  seek.addEventListener('input', () => {
-    dragging = true;
-    const dur = player.audio.duration || 0;
-    if (dur) $('#tCur').textContent = fmtTime((Number(seek.value) / 1000) * dur);
-  });
-  seek.addEventListener('change', () => {
-    const dur = player.audio.duration || 0;
-    if (dur) player.seek((Number(seek.value) / 1000) * dur);
-    dragging = false;
   });
 
   $('#sheetClose').addEventListener('click', closeSheet);
@@ -1727,8 +2034,8 @@ function bindEvents() {
   });
 
   $('#scroller').addEventListener('scroll', () => {
-    $('#scroller');
-    $('.hdr').classList.toggle('is-scrolled', $('#scroller').scrollTop > 4);
+    const hdr = $('.hdr');
+    if (hdr) hdr.classList.toggle('is-scrolled', $('#scroller').scrollTop > 4);
   }, { passive: true });
 
   document.addEventListener('visibilitychange', () => {
@@ -1845,11 +2152,7 @@ function onListClick(e) {
     return;
   }
   if (act === 'pl-remove') {
-    const pl = personal.playlists.find((p) => p.id === state.openPlaylistId);
-    if (!pl) return;
-    pl.fileIds = pl.fileIds.filter((id) => id !== action.dataset.id);
-    saveJSON(PERSONAL_KEY, personal);
-    renderList();
+    removeFromPlaylist(action.dataset.id);
     return;
   }
   if (act === 'pl-delete') {
@@ -1866,7 +2169,7 @@ function onListClick(e) {
   const file = fileById(card.dataset.id);
   if (!file) return;
 
-  if (state.selectMode && act === 'open') {
+  if (state.selectMode && (act === 'open' || act === 'play')) {
     toggleSelect(file.id);
     return;
   }
@@ -1880,6 +2183,10 @@ function onListClick(e) {
     case 'open': {
       if (player.current?.id === file.id) openNowPlaying();
       else playFile(file);
+      break;
+    }
+    case 'more': {
+      openMoreSheet(file, { playlist: state.view === 'playlists' && !!state.openPlaylistId });
       break;
     }
     case 'fav': {

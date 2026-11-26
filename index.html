@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#4f56e6" />
+<meta name="theme-color" content="#ffffff" />
 <title>NIJI VOICE</title>
 <meta name="description" content="NIJI VOICE — Google Drive 보이스 아카이브 전용 플레이어. 태그·타임스탬프 메모·타임싱크 가사를 한 화면에서." />
 <link rel="manifest" href="manifest.webmanifest" />
@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="NIJI VOICE" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="format-detection" content="telephone=no" />
-<link rel="stylesheet" href="css/app.css?v=7" />
+<link rel="stylesheet" href="css/app.css?v=8" />
 </head>
 <body>
 
@@ -24,11 +24,10 @@
   <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 5.6v12.8a1 1 0 0 1-1.54.84L8.2 13.6a1 1 0 0 1 0-1.68l8.26-5.64A1 1 0 0 1 18 5.6Z" fill="currentColor"/><rect x="4.6" y="5.2" width="2.6" height="13.6" rx="1.2" fill="currentColor"/></symbol>
   <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5.6v12.8a1 1 0 0 0 1.54.84l8.26-5.64a1 1 0 0 0 0-1.68L7.54 4.76A1 1 0 0 0 6 5.6Z" fill="currentColor"/><rect x="16.8" y="5.2" width="2.6" height="13.6" rx="1.2" fill="currentColor"/></symbol>
   <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16.5 4.5 21 8.3l-4.5 3.8v-2.4h-2.2c-.9 0-1.7.45-2.2 1.22l-4.3 6.5A4.6 4.6 0 0 1 4.1 19.5H3v-1.8h1.1c.9 0 1.7-.45 2.2-1.22l4.3-6.5A4.6 4.6 0 0 1 14.3 8h2.2V4.5Z" fill="currentColor"/><path d="M3 6.3h1.1c1.2 0 2.3.63 3 1.66l1.1 1.6-1.1 1.6-1.15-1.68A1.6 1.6 0 0 0 4.1 8.7H3V6.3Zm10.9 8.9h2.1v-2.4l4.5 3.8-4.5 3.8v-2.4h-2.1c-1.2 0-2.3-.63-3-1.66l-.8-1.15 1.15-1.6.85 1.23c.3.5.86.85 1.4.85Z" fill="currentColor" opacity=".55"/></symbol>
-  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.6 2.47 5.2 5.7.78-4.17 3.95 1.03 5.65L12 16.5l-5.03 2.68L8 13.53 3.83 9.58l5.7-.78L12 3.6Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.6 2.47 5.2 5.7.78-4.17 3.95 1.03 5.65L12 16.5l-5.03 2.68L8 13.53 3.83 9.58l5.7-.78L12 3.6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
   <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="m12 3.6 2.47 5.2 5.7.78-4.17 3.95 1.03 5.65L12 16.5l-5.03 2.68L8 13.53 3.83 9.58l5.7-.78L12 3.6Z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
   <symbol id="i-memo" viewBox="0 0 24 24"><path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H9.8L5.9 19.9a.6.6 0 0 1-1-.47V16.5h-.4A1.5 1.5 0 0 1 3 15V7a1.5 1.5 0 0 1 1.5-1.5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7.4 9.4h9M7.4 12.4h5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   <symbol id="i-tag" viewBox="0 0 24 24"><path d="M11.6 3.4H5.2A1.8 1.8 0 0 0 3.4 5.2v6.4c0 .48.19.94.53 1.27l8 8a1.8 1.8 0 0 0 2.55 0l6.4-6.4a1.8 1.8 0 0 0 0-2.55l-8-8a1.8 1.8 0 0 0-1.28-.52Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></symbol>
-  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.8 12H20.2M12 3.7c2.3 2.4 3.4 5.2 3.4 8.3s-1.1 5.9-3.4 8.3c-2.3-2.4-3.4-5.2-3.4-8.3S9.7 6.1 12 3.7Z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10.4m0 0 3.6-3.6M12 14.4 8.4 10.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.8 16.2v2.1a1.7 1.7 0 0 0 1.7 1.7h11a1.7 1.7 0 0 0 1.7-1.7v-2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.8 4.4 4.3L19 6.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
@@ -40,20 +39,26 @@
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6.5H20M8.5 12H20M8.5 17.5H20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4.8" cy="6.5" r="1.3" fill="currentColor"/><circle cx="4.8" cy="12" r="1.3" fill="currentColor"/><circle cx="4.8" cy="17.5" r="1.3" fill="currentColor"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m15.6 15.6 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5.5 6.5 6.5L9 18.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 24 24"><path d="m5.5 9 6.5 6.5L18.5 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.8 7.2A1.8 1.8 0 0 1 5.6 5.4h3.2l1.9 2.2h7.7a1.8 1.8 0 0 1 1.8 1.8v7.8a1.8 1.8 0 0 1-1.8 1.8H5.6a1.8 1.8 0 0 1-1.8-1.8Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="10.5" rx="3" fill="currentColor"/><path d="M6 11.4a6 6 0 0 0 12 0M12 17.4V21M9 21h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.6" cy="12" r="1.75" fill="currentColor"/><circle cx="12" cy="12" r="1.75" fill="currentColor"/><circle cx="18.4" cy="12" r="1.75" fill="currentColor"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 </svg>
 
 <div class="app">
-  <header class="hdr">
+  <header class="hdr" id="hdr">
     <div class="hdr-top">
       <div class="brand">
-        <span class="brand-ico"><svg><use href="#i-mic"/></svg></span>
         <h1>NIJI VOICE</h1>
+        <span class="conn" id="connState" role="button" tabindex="0">데모 모드</span>
       </div>
       <div class="hdr-actions">
-        <button class="btn-refresh" id="btnRefresh" type="button">
-          <svg><use href="#i-refresh"/></svg><span>새로고침</span>
+        <button class="nick" id="btnNick" type="button" title="닉네임 변경">
+          <span id="nickLabel">게스트</span>
+        </button>
+        <button class="btn-icon" id="btnRefresh" type="button" aria-label="새로고침">
+          <svg><use href="#i-refresh"/></svg>
         </button>
         <button class="btn-icon" id="btnSettings" type="button" aria-label="설정">
           <svg><use href="#i-gear"/></svg>
@@ -61,16 +66,9 @@
       </div>
     </div>
 
-    <div class="hdr-sub">
-      <button class="nick" id="btnNick" type="button" title="닉네임 변경">
-        <span class="nick-dot"></span><span id="nickLabel">게스트</span><span class="nick-edit">변경</span>
-      </button>
-      <span class="conn" id="connState">데모 모드</span>
-    </div>
-
     <div class="search">
       <svg class="search-ico"><use href="#i-search"/></svg>
-      <input id="searchInput" type="search" placeholder="파일 이름으로 검색…" autocomplete="off" enterkeyhint="search" />
+      <input id="searchInput" type="search" placeholder="곡 이름으로 검색" autocomplete="off" enterkeyhint="search" />
       <button class="search-clear" id="btnClearSearch" type="button" hidden aria-label="검색 지우기">
         <svg><use href="#i-close"/></svg>
       </button>
@@ -79,12 +77,12 @@
 
   <div class="scroller" id="scroller">
     <nav class="tabs" id="viewTabs" aria-label="보기">
-      <button class="tab is-on" data-view="all" type="button">전체 파일</button>
+      <button class="tab is-on" data-view="all" type="button">전체</button>
       <button class="tab" data-view="fav" type="button">즐겨찾기</button>
       <button class="tab" data-view="playlists" type="button">재생목록</button>
-      <button class="tab" data-view="folders" type="button">폴더로 보기</button>
-      <button class="tab" data-view="notes" type="button">메모 모아보기</button>
-      <button class="tab" data-view="lyrics" type="button">가사 검색</button>
+      <button class="tab" data-view="folders" type="button">폴더</button>
+      <button class="tab" data-view="notes" type="button">메모</button>
+      <button class="tab" data-view="lyrics" type="button">가사</button>
     </nav>
 
     <section class="filters" id="filters" aria-label="필터">
@@ -107,11 +105,14 @@
       <button class="btn-playall" id="btnPlayAll" type="button">
         <svg><use href="#i-play"/></svg><span>전체 재생</span>
       </button>
-      <button class="btn-select" id="btnSelectMode" type="button">
-        <span class="cbx"></span><span>선택 모드</span>
+      <button class="tb-btn" id="btnFilterToggle" type="button">
+        필터<span class="tb-count" id="filterCount" hidden></span>
+      </button>
+      <button class="tb-btn" id="btnSelectMode" type="button">
+        <span class="cbx"></span><span>선택</span>
       </button>
       <button class="sortbtn" id="btnSort" type="button">
-        <span id="sortLabel">최신순</span><svg class="caret"><use href="#i-chevron"/></svg>
+        <span id="sortLabel">최신순</span><svg class="caret"><use href="#i-chev"/></svg>
       </button>
     </div>
 
@@ -131,35 +132,20 @@
 </div>
 
 <div class="player" id="playerBar">
+  <div class="pprog"><i id="pProg"></i></div>
   <div class="pflags" id="pFlags"></div>
   <div class="prow">
     <button class="pnow" id="btnNow" type="button">
       <span class="pthumb" id="pThumb"><svg><use href="#i-mic"/></svg></span>
       <span class="ptext">
-        <span class="ptitle" id="pTitle">재생 중인 파일 없음</span>
+        <span class="ptitle" id="pTitle">재생 중인 곡 없음</span>
         <span class="psub" id="pSub"></span>
       </span>
     </button>
     <div class="pquick">
-      <button type="button" id="btnTimer" title="취침 타이머"><svg><use href="#i-moon"/></svg></button>
-      <button type="button" id="btnLyrics" title="자막"><svg><use href="#i-lyrics"/></svg></button>
-      <button type="button" id="btnMemo" title="메모"><svg><use href="#i-memo"/></svg></button>
-      <button type="button" id="btnQueue" title="재생 목록"><svg><use href="#i-list"/></svg></button>
+      <button type="button" id="btnPlay" class="pbtn-play" aria-label="재생/일시정지"><svg><use href="#i-play"/></svg></button>
+      <button type="button" id="btnNext" aria-label="다음 곡"><svg><use href="#i-next"/></svg></button>
     </div>
-  </div>
-
-  <div class="pseek">
-    <span id="tCur">00:00</span>
-    <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="재생 위치" />
-    <span id="tDur">-00:00</span>
-  </div>
-
-  <div class="pctrl">
-    <button type="button" id="btnShuffle" title="셔플"><svg><use href="#i-shuffle"/></svg></button>
-    <button type="button" id="btnPrev" title="이전"><svg><use href="#i-prev"/></svg></button>
-    <button type="button" id="btnPlay" class="big" title="재생/일시정지"><svg><use href="#i-play"/></svg></button>
-    <button type="button" id="btnNext" title="다음"><svg><use href="#i-next"/></svg></button>
-    <button type="button" id="btnAB" class="ab" title="A-B 구간 반복"><span>A·B</span></button>
   </div>
 </div>
 
@@ -198,6 +184,6 @@
     }
   }, 6000);
 </script>
-<script type="module" src="js/app.js?v=9"></script>
+<script type="module" src="js/app.js?v=10"></script>
 </body>
 </html>
