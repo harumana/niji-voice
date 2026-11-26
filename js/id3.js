@@ -134,8 +134,26 @@ export function parseSyncedLyrics(text) {
     }
   }
   out.sort((a, b) => a.time - b.time);
-  // Drop duplicate timestamps that repeat the same text.
-  return out.filter((l, i) => i === 0 || l.time !== out[i - 1].time || l.orig !== out[i - 1].orig);
+  // Drop duplicate timestamps that repeat the same text, and fold the
+  // "同一タイムスタンプ2行" style (원문 줄 + 번역 줄) into one 병기 line.
+  const merged = [];
+  for (const line of out) {
+    const prev = merged[merged.length - 1];
+    if (!prev) { merged.push(line); continue; }
+    const sameTime = Math.abs(prev.time - line.time) < 0.05;
+    if (!sameTime) { merged.push(line); continue; }
+    if (prev.orig === line.orig) continue;               // exact duplicate
+    if (!prev.trans && !line.trans) {                    // 원문 줄 + 번역 줄
+      prev.trans = line.orig;
+      continue;
+    }
+    if (!prev.trans && line.trans) {                     // 원문 줄 + "번역 / 부연"
+      prev.trans = line.trans;
+      continue;
+    }
+    merged.push(line);
+  }
+  return merged;
 }
 
 /** Length in bytes of the whole ID3 tag, from its first 10 bytes. */
