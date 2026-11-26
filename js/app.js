@@ -330,6 +330,8 @@ const state = {
   offlineOnly: false,
   folderMode: 'collection',
   collectionLiver: null,
+  collectionAxis: 'liver',
+  openTheme: null,
   openSeries: null,
   selectMode: false,
   selected: new Set(),
@@ -1185,8 +1187,76 @@ function displayLivers() {
   return hit ? [hit] : (available.length ? [available[0]] : []);
 }
 
+function axisBar() {
+  const ax = state.collectionAxis === 'theme' ? 'theme' : 'liver';
+  return `<div class="seg axis">
+    <button type="button" class="${ax === 'liver' ? 'is-on' : ''}" data-act="col-axis" data-axis="liver">라이버별</button>
+    <button type="button" class="${ax === 'theme' ? 'is-on' : ''}" data-act="col-axis" data-axis="theme">테마별</button>
+  </div>`;
+}
+
+/** every tag in the library with the voices that carry it */
+function themeIndex() {
+  const map = new Map();
+  for (const f of state.files) {
+    // 내가 단 태그만 — 시리즈명·연도는 라이버별 화면이 이미 보여준다
+    for (const t of (shared?.tagsOf(f.id) || [])) {
+      if (!map.has(t)) map.set(t, []);
+      map.get(t).push(f);
+    }
+  }
+  return [...map.entries()].sort((a, b) => b[1].length - a[1].length
+    || a[0].localeCompare(b[0], 'ko', { numeric: true }));
+}
+
+function themeTileHTML(tag, files) {
+  const rep = files.find((f) => f.folderCoverId) || files.find((f) => coverInfoFor(f)) || files[0];
+  const cov = coverInfoFor(rep);
+  return `<button type="button" class="tile" data-act="open-theme" data-tag="${esc(tag)}">
+    <span class="tile-cov">
+      <span class="cov-box" data-cover="${esc(rep.id)}"${cov ? ' data-painted="1"' : ''}>${cov ? `<img src="${cov.thumb || cov.full}" alt="" loading="lazy" />` : ''}</span>
+      <span class="tile-badge">${files.length}</span>
+    </span>
+    <span class="tile-name">${esc(tag)}</span>
+  </button>`;
+}
+
+function renderThemeDetail(tag) {
+  const area = $('#listArea');
+  const files = state.files.filter((f) => (shared?.tagsOf(f.id) || []).includes(tag));
+  if (!files.length) { state.openTheme = null; return renderCollection(); }
+  area.innerHTML = `
+    <div class="sd-bar">
+      <button type="button" class="sd-ico back" data-act="close-theme" aria-label="뒤로"><svg><use href="#i-chevron"/></svg></button>
+    </div>
+    <h2 class="sd-title">${esc(tag)}</h2>
+    <div class="sd-meta">보이스 ${files.length}개</div>
+    <button type="button" class="sd-play" data-act="theme-play"><svg><use href="#i-play"/></svg>전체 재생</button>
+    <div class="sd-tracks">${files.map((f) => cardHTML(f)).join('')}</div>
+  `;
+  $('#listFoot').textContent = '';
+}
+
+function renderThemeIndex() {
+  const area = $('#listArea');
+  const themes = themeIndex();
+  area.innerHTML = folderModeBar('collection', state.files.length) + axisBar()
+    + (themes.length
+      ? `<div class="col-grid">${themes.map(([tag, files]) => themeTileHTML(tag, files)).join('')}</div>`
+      : emptyHTML({ icon: '🏷', title: '아직 테마가 없어요', desc: '보이스에 태그를 달면 태그별로 모아 볼 수 있어요.' }));
+  $('#listFoot').textContent = '';
+  for (const [, files] of themes.slice(0, 18)) {
+    const rep = files.find((f) => f.folderCoverId) || files.find((f) => coverInfoFor(f)) || files[0];
+    if (rep) queueCover(rep.id);
+  }
+}
+
 function renderCollection() {
   const area = $('#listArea');
+  if (state.collectionAxis === 'theme') {
+    if (state.openTheme) return renderThemeDetail(state.openTheme);
+    return renderThemeIndex();
+  }
   const all = state.files;
   if (!all.length) {
     area.innerHTML = folderModeBar('collection', 0)
@@ -1238,7 +1308,7 @@ function renderCollection() {
   const favBlock = favHere.length ? `<div class="col-year fav-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
     <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
 
-  area.innerHTML = folderModeBar('collection', totalFiles) + favLiverStrip(cur) + head + favBlock + sections;
+  area.innerHTML = folderModeBar('collection', totalFiles) + axisBar() + favLiverStrip(cur) + head + favBlock + sections;
   $('#listFoot').textContent = '';
   prefetchSeriesCovers(flat);
 }
@@ -3131,6 +3201,24 @@ function onListClick(e) {
     return;
   }
   if (act === 'close-series') { state.openSeries = null; renderList(); return; }
+  if (act === 'col-axis') {
+    state.collectionAxis = action.dataset.axis === 'theme' ? 'theme' : 'liver';
+    state.openTheme = null;
+    state.openSeries = null;
+    renderList();
+    const sc = $('#scroller');
+    if (sc) sc.scrollTo({ top: 0 });
+    return;
+  }
+  if (act === 'open-theme') { state.openTheme = action.dataset.tag || ''; renderList(); return; }
+  if (act === 'close-theme') { state.openTheme = null; renderList(); return; }
+  if (act === 'theme-play') {
+    const list = state.files.filter((f) => (shared?.tagsOf(f.id) || []).includes(state.openTheme || ''));
+    if (!list.length) { toast('재생할 보이스가 없어요.'); return; }
+    player.playFiles(list, 0);
+    toast(`${list.length}개 재생 시작`);
+    return;
+  }
   if (act === 'series-move') {
     const dir = Number(action.dataset.dir) || 0;
     if (!dir || !state.openSeries) return;
@@ -3159,6 +3247,7 @@ function onListClick(e) {
   if (act === 'folder-mode') {
     state.folderMode = action.dataset.mode === 'tree' ? 'tree' : 'collection';
     state.openSeries = null;
+    state.openTheme = null;
     if (state.folderMode === 'tree' && !state.folderId) state.folderId = state.rootId;
     renderList();
     return;

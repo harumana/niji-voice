@@ -1362,3 +1362,6 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 }
 .liver-chip.is-on .chip-n { color: rgba(255,255,255,.62); }
 .liver-chip:active { transform: scale(.97); }
+
+/* collection axis: 라이버별 / 테마별 */
+.seg.axis { margin: 0 0 14px; width: max-content; }
