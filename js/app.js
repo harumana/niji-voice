@@ -740,7 +740,7 @@ function renderControlbar() {
   const ft = $('#btnFilterToggle');
   if (ft) ft.hidden = state.view === 'folders';
   const play = $('#btnPlayAll');
-  if (play) play.querySelector('span').textContent = (state.view === 'folders' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
+  if (play) play.querySelector('span').textContent = (state.view === 'all' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
   const off = $('#btnOffline');
   if (off) off.classList.toggle('is-on', !!state.offlineOnly);
   const sh = $('#btnShuffleAll');
@@ -833,7 +833,8 @@ function renderList() {
   foot.innerHTML = '';
 
   if (state.view === 'playlists') return renderPlaylists();
-  if (state.view === 'folders') return renderFolders();
+  if (state.view === 'folders') return renderCollection();
+  if (state.view === 'all' && state.folderMode === 'tree') return renderFolders();
   if (state.view === 'notes') return renderNotes();
   if (state.view === 'lyrics') return renderLyricsView();
 
@@ -872,7 +873,7 @@ function renderList() {
   area.innerHTML = listHead(
     `${files.length}개 파일${summary ? ` · ${esc(summary)}` : ''} · ${sortLabel}`,
     `<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button>`
-  ) + files.map((f) => cardHTML(f)).join('');
+  ) + folderToggle() + files.map((f) => cardHTML(f)).join('');
   foot.textContent = '';
 }
 
@@ -914,12 +915,16 @@ function renderPlaylists() {
 function folderModeBar(mode, count = null) {
   const n = count == null ? state.files.length : count;
   return `<div class="colhead">
-    <div class="seg">
-      <button type="button" class="${mode !== 'tree' ? 'is-on' : ''}" data-act="folder-mode" data-mode="collection">컬렉션</button>
-      <button type="button" class="${mode === 'tree' ? 'is-on' : ''}" data-act="folder-mode" data-mode="tree">폴더</button>
-    </div>
     <span class="colcount">${n}개</span>
   </div>`;
+}
+
+/** 전체 보기에서 폴더 트리로 보는 토글 */
+function folderToggle() {
+  return `<label class="checkline">
+    <input type="checkbox" data-act="folder-mode" ${state.folderMode === 'tree' ? 'checked' : ''} />
+    <span>폴더별 보기</span>
+  </label>`;
 }
 
 /* ── lazy ID3 covers: one range read per series, shared by its tracks ── */
@@ -1460,7 +1465,6 @@ async function offlineMany(files) {
 }
 
 function renderFolders() {
-  if (state.folderMode !== 'tree') return renderCollection();
   const area = $('#listArea');
   const folderId = state.folderId || state.rootId;
   const crumbs = [];
@@ -1490,7 +1494,7 @@ function renderFolders() {
     </button>`;
   }).join('');
 
-  area.innerHTML = folderModeBar('tree') + crumbHTML + folderHTML + (files.length ? files.map((f) => cardHTML(f)).join('') : '')
+  area.innerHTML = folderToggle() + crumbHTML + folderHTML + (files.length ? files.map((f) => cardHTML(f)).join('') : '')
     + (!subFolders.length && !files.length ? emptyHTML({ icon: '📂', title: '빈 폴더예요', desc: '여기에는 아직 오디오 파일이 없어요.' }) : '');
   $('#listFoot').textContent = files.length ? `${files.length}개 파일` : '';
 }
@@ -3064,11 +3068,11 @@ function bindEvents() {
   });
   on('#btnPlayAll', 'click', () => {
     let files = visibleFiles();
-    if (state.view === 'folders' && state.folderMode !== 'tree') {
+    if (state.view === 'folders') {
       const liver = state.collectionLiver || personal.lastLiver || '';
       files = state.files.filter((f) => (f.liver || '기타') === liver);
     }
-    if (state.view === 'folders' && state.folderMode === 'tree') {
+    if (state.view === 'all' && state.folderMode === 'tree') {
       files = state.files.filter((f) => f.parentId === (state.folderId || state.rootId));
     }
     if (!files.length) { toast('재생할 파일이 없어요.'); return; }
@@ -3262,7 +3266,7 @@ function onListClick(e) {
     return;
   }
   if (act === 'folder-mode') {
-    state.folderMode = action.dataset.mode === 'tree' ? 'tree' : 'collection';
+    state.folderMode = (action.checked !== undefined ? action.checked : action.dataset.mode === 'tree') ? 'tree' : 'collection';
     state.openSeries = null;
     state.openTheme = null;
     if (state.folderMode === 'tree' && !state.folderId) state.folderId = state.rootId;
