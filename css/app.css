@@ -709,7 +709,45 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 .memo-card:active { background: var(--surface-2); }
 .memo-card.is-new { background: #fffafa; }
 .memo-card .memo { border-bottom: 0; padding: 2px 0; }
-.memo-card .memo-file { font-weight: 600; color: var(--text-2); }
+.memo-card .memo-file {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  font-weight: 600; color: var(--text-2); text-align: left;
+  background: none; border: 0; padding: 0 0 3px;
+}
+.memo-card .mf-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memo-card .mf-time {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 700; color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.memo-group { margin-bottom: 10px; }
+.memo-group .col-liver { margin: 14px 4px 2px; }
+
+/* 메모 답글 */
+.memo-replies { padding: 0 0 8px 60px; }
+.memo-reply {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 12px; line-height: 1.5; color: var(--text-2);
+  padding: 3px 0;
+}
+.memo-reply .mr-author { flex: 0 0 auto; font-weight: 700; color: var(--text-2); }
+.memo-reply .mr-text { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+.memo-reply .mr-del { flex: 0 0 auto; font-size: 10px; color: var(--faint); text-decoration: underline; text-underline-offset: 2px; }
+.memo-reply-open {
+  margin-top: 2px; font-size: 11px; font-weight: 600; color: var(--accent);
+  background: none; border: 0; padding: 2px 0;
+}
+.memo-reply-form { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.memo-reply-form[hidden] { display: none; }
+.memo-reply-form input {
+  flex: 1 1 auto; min-width: 0;
+  padding: 7px 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface-2);
+  font-size: 12px;
+}
+.memo-reply-form .send {
+  flex: 0 0 auto; padding: 7px 10px; border-radius: 10px;
+  background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+}
 
 /* ───────── lyrics ───────── */
 .lyrics {

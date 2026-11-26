@@ -1671,32 +1671,89 @@ function renderFolders() {
   $('#listFoot').textContent = files.length ? `${files.length}개 파일` : '';
 }
 
+/** 한 메모에 달린 답글 묶음 — 답글은 쓴 사람만 지울 수 있다 */
+function memoRepliesHTML(n, { own = false } = {}) {
+  const replies = Array.isArray(n.replies) ? n.replies : [];
+  const row = (r) => `
+    <div class="memo-reply" data-reply="${esc(r.id)}">
+      <span class="mr-author">${esc(r.author)}</span>
+      <span class="mr-text">${esc(r.text)}</span>
+      ${r.author === personal.nickname && own
+        ? `<button type="button" class="mr-del" data-act="${own === 'np' ? 'np-del-reply' : 'memo-del-reply'}" data-id="${esc(n.id)}" data-file="${esc(n.fileId)}" data-reply="${esc(r.id)}">삭제</button>`
+        : ''}
+    </div>`;
+  return `
+    <div class="memo-replies">
+      ${replies.map(row).join('')}
+      <button type="button" class="memo-reply-open" data-act="memo-reply-open" data-note="${esc(n.id)}">
+        답글${replies.length ? ` ${replies.length}` : ''}
+      </button>
+      <div class="memo-reply-form" hidden>
+        <input type="text" maxlength="200" placeholder="답글을 남겨 보세요" data-reply-input="${esc(n.id)}" />
+        <button type="button" class="send" data-act="memo-add-reply" data-id="${esc(n.id)}" data-file="${esc(n.fileId)}">등록</button>
+      </div>
+    </div>`;
+}
+
+function memoCardHTML(n) {
+  const mine = n.author === personal.nickname;
+  return `<div class="memo-card ${isNewNote(n) ? 'is-new' : ''}" data-note-card="${esc(n.id)}">
+    <button type="button" class="memo-file" data-act="memo-jump" data-id="${esc(n.fileId)}" data-t="${n.t ?? ''}">
+      <span class="mf-name">${esc(displayName(n.file?.name || n.fileId))}</span>
+      <span class="mf-time">${n.t != null ? fmtTime(n.t) : '전체'}</span>
+    </button>
+    <div class="memo">
+      <div class="memo-body">
+        <div class="memo-text">${esc(n.text)}</div>
+        <div class="memo-meta">${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
+          ${mine ? `<button type="button" class="memo-del" data-act="memo-del" data-file="${esc(n.fileId)}" data-id="${esc(n.id)}">삭제</button>` : ''}
+        </div>
+      </div>
+    </div>
+    ${memoRepliesHTML(n, { own: true })}
+  </div>`;
+}
+
 function renderNotes() {
   const area = $('#listArea');
   const rows = shared.allNotes().map((n) => ({ ...n, file: fileById(n.fileId) })).filter((n) => n.file || n.fileId);
   const newN = rows.filter(isNewNote).length;
 
-  const head = `<div class="listhead">
-      <span>메모 <b>${rows.length}</b>개${newN ? ` · 새 메모 <b>${newN}</b>개` : ''}</span>
-      ${newN ? '<button class="mini has-content" data-act="mark-seen">모두 읽음</button>' : ''}
-    </div>`;
-
   if (!rows.length) {
-    area.innerHTML = head + emptyHTML({ icon: '💬', title: '아직 메모가 없어요', desc: '재생 중 원하는 지점에서 메모를 남기면<br>타임스탬프와 함께 여기에 모여요.' });
+    area.innerHTML = `<div class="listhead"><span>메모 <b>0</b>개</span></div>`
+      + emptyHTML({ icon: '💬', title: '아직 메모가 없어요', desc: '재생 중 원하는 지점에서 메모를 남기면<br>타임스탬프와 함께 여기에 모여요.' });
     return;
   }
 
-  area.innerHTML = head + rows.map((n) => `
-    <button class="memo-card ${isNewNote(n) ? 'is-new' : ''}" data-act="memo-jump" data-id="${esc(n.fileId)}" data-t="${n.t ?? ''}">
-      <div class="memo-file">${esc(displayName(n.file?.name || n.fileId))}</div>
-      <div class="memo">
-        <span class="memo-time">${n.t != null ? fmtTime(n.t) : '전체'}</span>
-        <span class="memo-body">
-          <span class="memo-text">${esc(n.text)}</span>
-          <span class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}</span>
-        </span>
-      </div>
-    </button>`).join('');
+  // 작성자별로 묶는다 — 내 메모가 먼저, 그다음 최근에 쓴 사람 순
+  const byAuthor = new Map();
+  for (const n of rows) {
+    const a = n.author || '익명';
+    if (!byAuthor.has(a)) byAuthor.set(a, []);
+    byAuthor.get(a).push(n);
+  }
+  const latest = (list) => Math.max(...list.map((n) => new Date(n.createdAt).getTime() || 0));
+  const authors = [...byAuthor.keys()].sort((a, b) => {
+    const me = a === personal.nickname, m2 = b === personal.nickname;
+    if (me !== m2) return me ? -1 : 1;
+    return latest(byAuthor.get(b)) - latest(byAuthor.get(a)) || a.localeCompare(b, 'ko');
+  });
+
+  const head = `<div class="listhead">
+      <span>메모 <b>${rows.length}</b>개 · 작성자 <b>${authors.length}</b>명${newN ? ` · 새 메모 <b>${newN}</b>개` : ''}</span>
+      ${newN ? '<button class="mini has-content" data-act="mark-seen">모두 읽음</button>' : ''}
+    </div>`;
+
+  const sections = authors.map((a) => {
+    const list = byAuthor.get(a);
+    const mine = a === personal.nickname;
+    return `<section class="memo-group">
+      <h3 class="col-liver">${esc(a)}${mine ? ' (나)' : ''}<span>${list.length}</span></h3>
+      ${list.map(memoCardHTML).join('')}
+    </section>`;
+  }).join('');
+
+  area.innerHTML = head + sections;
 }
 
 /* ── lyrics search view ── */
@@ -2204,21 +2261,8 @@ function bindSheetSwipe(enabled) {
     on(el, 'pointercancel', end);
   }
 
-  // 앨범 커버 쪽에서도 아래로 쓸면 닫힌다 (탭은 그대로 커버 크게 보기)
-  const art = sheet.querySelector('.np-art-wrap');
-  if (!art) return;
-  on(art, 'pointerdown', (e) => {
-    start(e);
-    art.setPointerCapture?.(e.pointerId);
-  });
-  on(art, 'pointermove', move);
-  on(art, 'pointerup', () => {
-    if (active && dy > 12) {
-      art.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
-    }
-    end();
-  });
-  on(art, 'pointercancel', end);
+  // 재생 화면에서는 커버를 끌어내려도 닫지 않는다 — 대신 커버가 줄어드는 데 한계를 둔다
+  // (닫기는 위 손잡이·머리 부분을 끌어내리면 된다)
 }
 
 function closeSheet() {
@@ -2572,14 +2616,17 @@ function openMemoSheet(file) {
     </div>
     <div class="taglist" id="memoList">
       ${notes.length ? notes.map((n) => `
-        <div class="memo" data-note="${esc(n.id)}">
-          <button class="memo-time" data-act="jump" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
-          <div class="memo-body">
-            <div class="memo-text">${esc(n.text)}</div>
-            <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
-              ${n.author === personal.nickname ? '<button class="memo-del" data-act="del" data-id="' + esc(n.id) + '">삭제</button>' : ''}
+        <div class="memo-card" data-note-card="${esc(n.id)}">
+          <div class="memo" data-note="${esc(n.id)}">
+            <button class="memo-time" data-act="jump" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
+            <div class="memo-body">
+              <div class="memo-text">${esc(n.text)}</div>
+              <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
+                ${n.author === personal.nickname ? '<button class="memo-del" data-act="del" data-file="' + esc(file.id) + '" data-id="' + esc(n.id) + '">삭제</button>' : ''}
+              </div>
             </div>
           </div>
+          ${memoRepliesHTML({ ...n, fileId: file.id }, { own: true })}
         </div>`).join('') : '<div class="note">아직 메모가 없어요.</div>'}
     </div>
   `);
@@ -2610,8 +2657,8 @@ function openMemoSheet(file) {
       closeSheet();
     }
     if (act === 'del') {
-      await shared.removeNote(file.id, b.dataset.id);
-      toast('메모를 지웠어요');
+      try { await shared.removeNote(file.id, b.dataset.id, { by: personal.nickname }); toast('메모를 지웠어요'); }
+      catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
       renderList();
       openMemoSheet(file);
     }
@@ -2738,14 +2785,17 @@ function npMemoHTML(file) {
     </div>
     <div id="npMemoList">
       ${notes.length ? notes.map((n) => `
-        <div class="memo" data-note="${esc(n.id)}">
-          <button type="button" class="memo-time" data-act="np-seek" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
-          <div class="memo-body">
-            <div class="memo-text">${esc(n.text)}</div>
-            <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
-              ${n.author === personal.nickname ? `<button type="button" class="memo-del" data-act="np-del" data-id="${esc(n.id)}">삭제</button>` : ''}
+        <div class="memo-card" data-note-card="${esc(n.id)}">
+          <div class="memo" data-note="${esc(n.id)}">
+            <button type="button" class="memo-time" data-act="np-seek" data-t="${n.t ?? ''}">${n.t != null ? fmtTime(n.t) : '전체'}</button>
+            <div class="memo-body">
+              <div class="memo-text">${esc(n.text)}</div>
+              <div class="memo-meta">${esc(n.author)} · ${esc(fmtDate(n.createdAt))} ${isNewNote(n) ? '<span class="newbadge">NEW</span>' : ''}
+                ${n.author === personal.nickname ? `<button type="button" class="memo-del" data-act="np-del" data-id="${esc(n.id)}">삭제</button>` : ''}
+              </div>
             </div>
           </div>
+          ${memoRepliesHTML({ ...n, fileId: file.id }, { own: 'np' })}
         </div>`).join('')
         : '<div class="note" style="padding:14px 4px">아직 메모가 없어요. 재생 중 원하는 지점에서 남겨 보세요.</div>'}
     </div>`;
@@ -2772,8 +2822,10 @@ function bindPanelDrag(body) {
   if (!drag || !panel || !npEl) return;
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const maxH = () => Math.max(90, npEl.clientHeight - 210);
   const minH = 46;
+  // 커버가 이만큼보다 작아지지는 않는다 (가사·메모를 아무리 올려도)
+  const artMin = () => Math.round(clamp(npEl.clientHeight * 0.3, 120, 200));
+  const maxH = () => Math.max(minH + 40, npEl.clientHeight - artMin());
 
   const saved = Number(personal.panelH);
   if (saved > 0) panel.style.height = `${clamp(saved, minH, maxH())}px`;
@@ -3090,8 +3142,8 @@ function openNowPlaying() {
       return;
     }
     if (act === 'np-del') {
-      await shared.removeNote(file.id, b.dataset.id);
-      toast('메모를 지웠어요');
+      try { await shared.removeNote(file.id, b.dataset.id, { by: personal.nickname }); toast('메모를 지웠어요'); }
+      catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
       renderList();
       renderNowPanel(file, 'memo');
       return;
@@ -3759,6 +3811,45 @@ async function onListClick(e) {
     if (!f) return;
     const t = action.dataset.t;
     if (t !== '') jumpTo(f, Number(t)); else playFile(f);
+    return;
+  }
+  if (act === 'memo-del') {
+    try {
+      await shared.removeNote(action.dataset.file, action.dataset.id, { by: personal.nickname });
+      toast('메모를 지웠어요');
+    } catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
+    renderTabs(); renderList(); return;
+  }
+  if (act === 'memo-reply-open') {
+    const card = action.closest('[data-note-card]') || action.closest('.memo');
+    const form = card?.querySelector('.memo-reply-form');
+    if (!form) return;
+    form.hidden = !form.hidden;
+    if (!form.hidden) form.querySelector('input')?.focus();
+    return;
+  }
+  if (act === 'memo-add-reply' || act === 'np-add-reply') {
+    const noteId = action.dataset.id;
+    const fileId = action.dataset.file;
+    const scope = action.closest('.memo-replies');
+    const inp = scope?.querySelector('input');
+    const text = (inp?.value || '').trim();
+    if (!text) { toast('답글 내용을 입력해 주세요.', { err: true }); return; }
+    await shared.addReply(fileId, noteId, { author: personal.nickname, text });
+    toast('답글을 남겼어요');
+    renderTabs();
+    if (act === 'np-add-reply' && ui.sheetFile) renderNowPanel(fileById(ui.sheetFile), 'memo');
+    else renderList();
+    return;
+  }
+  if (act === 'memo-del-reply' || act === 'np-del-reply') {
+    try {
+      await shared.removeReply(action.dataset.file, action.dataset.id, action.dataset.reply, { by: personal.nickname });
+      toast('답글을 지웠어요');
+    } catch (e) { toast(e?.message || '지울 수 없어요', { err: true }); }
+    renderTabs();
+    if (act === 'np-del-reply' && ui.sheetFile) renderNowPanel(fileById(ui.sheetFile), 'memo');
+    else renderList();
     return;
   }
   if (act === 'lyric-hit') {

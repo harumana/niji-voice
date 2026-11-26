@@ -651,12 +651,50 @@ export class SharedMeta {
     return note;
   }
 
-  async removeNote(fileId, noteIdValue) {
+  /** 메모는 쓴 사람만 지운다 — 남의 메모는 답글만 달 수 있다 */
+  async removeNote(fileId, noteIdValue, { by = '' } = {}) {
+    const note = (this.data.notes[fileId] || []).find((n) => n.id === noteIdValue);
+    if (!note) return false;
+    if (by && note.author !== by) { const err = new Error('남이 남긴 메모는 지울 수 없어요'); err.code = 'not_owner'; throw err; }
     this.removedNotes.add(noteIdValue);
-    return this.commit((d) => {
+    await this.commit((d) => {
       d.notes[fileId] = (d.notes[fileId] || []).filter((n) => n.id !== noteIdValue);
       if (!d.notes[fileId].length) delete d.notes[fileId];
     });
+    return true;
+  }
+
+  /** 메모에 답글 달기 — 답글에는 타임스탬프가 없다 */
+  async addReply(fileId, noteIdValue, { author, text }) {
+    const t = String(text || '').trim().slice(0, 500);
+    if (!t) return null;
+    const reply = {
+      id: 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      author: String(author || '익명').slice(0, 30),
+      text: t,
+      createdAt: new Date().toISOString(),
+    };
+    await this.commit((d) => {
+      const note = (d.notes[fileId] || []).find((n) => n.id === noteIdValue);
+      if (!note) return;
+      note.replies = [...(Array.isArray(note.replies) ? note.replies : []), reply];
+    });
+    return reply;
+  }
+
+  /** 답글은 쓴 사람만 지운다 */
+  async removeReply(fileId, noteIdValue, replyIdValue, { by = '' } = {}) {
+    const note = (this.data.notes[fileId] || []).find((n) => n.id === noteIdValue);
+    const reply = (note?.replies || []).find((r) => r.id === replyIdValue);
+    if (!note || !reply) return false;
+    if (by && reply.author !== by) { const err = new Error('남이 남긴 답글은 지울 수 없어요'); err.code = 'not_owner'; throw err; }
+    await this.commit((d) => {
+      const n = (d.notes[fileId] || []).find((x) => x.id === noteIdValue);
+      if (!n) return;
+      n.replies = (n.replies || []).filter((r) => r.id !== replyIdValue);
+      if (!n.replies.length) delete n.replies;
+    });
+    return true;
   }
 
   async setDuration(fileId, seconds) {
