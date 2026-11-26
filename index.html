@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'" />
-<link rel="stylesheet" href="css/app.css?v=56" />
+<link rel="stylesheet" href="css/app.css?v=57" />
 </head>
 <body>
 
@@ -181,12 +181,19 @@
     if (window.__appReady) { var e = document.getElementById('bootError'); if (e) e.hidden = true; return; }
     if (bootTries < 4) { setTimeout(bootCheck, 5000); return; }
     var b = document.getElementById('bootError');
-    if (b) {
+    if (b && b.hidden) {
       b.hidden = false;
-      b.textContent = '앱을 불러오지 못했어요. 새로고침해 주세요.';
+      b.innerHTML = '<span>앱을 불러오지 못했어요.</span>' +
+        '<button type="button" id="bootRetry">다시 시도</button>';
+      var r = document.getElementById('bootRetry');
+      if (r) r.addEventListener('click', function () {
+        b.hidden = true; bootTries = 0; bootCheck();
+        if ('caches' in window) caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+        location.reload();
+      });
     }
   })();
 </script>
-<script type="module" src="js/app.js?v=86"></script>
+<script type="module" src="js/app.js?v=87"></script>
 </body>
 </html>
