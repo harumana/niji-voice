@@ -1085,8 +1085,8 @@ function renderPlaylists() {
 
   const favCount = state.files.filter((f) => isFav(f.id)).length;
   const favRow = `
-    <button class="pl-row" data-act="pl-fav">
-      <span class="pl-ico"><svg><use href="#i-star"/></svg></span>
+    <button class="pl-row pl-gold" data-act="pl-fav">
+      <span class="pl-ico"><svg><use href="#i-star-fill"/></svg></span>
       <span class="pl-name">즐겨찾기</span>
       <span class="pl-count">${favCount}개</span>
       <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
