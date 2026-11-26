@@ -47,6 +47,65 @@ function displayName(name) {
   return String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '');
 }
 
+/* ── auto tags from folder path / file name / ID3 album ── */
+function cleanSeriesName(text, { liverShort = '', liver = '' } = {}) {
+  let s = String(text || '').trim();
+  if (!s) return '';
+  s = s.replace(/\.[a-z0-9]{2,5}$/i, '');
+  s = s.replace(/^\s*\d{1,4}[_.\-\s]+/, '');
+  s = s.replace(/^(19|20)\d{2}[_.\-\s]*/, '');
+  s = s.replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/ex[\s_-]*another/gi, ' ').replace(/\bex\b/gi, ' ');
+  if (liver) s = s.split(liver).join(' ');
+  if (liverShort) s = s.split(liverShort).join(' ');
+  s = s.replace(/\s+/g, ' ').replace(/^[\s\-_.·]+|[\s\-_.·]+$/g, '').trim();
+  if (!s) return '';
+  if (/^(ex|another|ex another|ボイス|voice|전체)$/i.test(s)) return '';
+  return s;
+}
+
+const autoTagCache = new Map();
+
+function autoTagsOf(f) {
+  if (!f) return [];
+  const album = parsedCache.get(f.id)?.album || '';
+  const key = `${album}|${f.name}|${f.liver}|${(f.path || []).join('/')}`;
+  const hit = autoTagCache.get(f.id);
+  if (hit && hit.key === key) return hit.tags;
+
+  const nameBase = displayName(f.name || '');
+  const liverShort = (f.liver || '').replace(/\s*\([^)]*\)\s*$/, '');
+  const opts = { liverShort, liver: f.liver || '' };
+
+  let series = '';
+  const sources = [album, ...(f.path || []).slice(1).reverse(), nameBase];
+  for (const source of sources) {
+    series = cleanSeriesName(source, opts);
+    if (series && series !== liverShort) break;
+    series = '';
+  }
+
+  const tags = [];
+  if (series && series !== f.year) tags.push(series);
+  if (f.year) tags.push(f.year);
+  if (/(^|[\s_-])ex([\s_-]|$)|ex[\s_-]*another/i.test(nameBase)) tags.push('EX');
+
+  const out = [...new Set(tags.filter(Boolean).map((t) => t.replace(/\s+/g, ' ').trim()))];
+  autoTagCache.set(f.id, { key, tags: out });
+  return out;
+}
+
+/** custom tags (shared meta) + derived tags, custom first */
+function tagsOf(f) {
+  if (!f) return [];
+  const custom = shared?.tagsOf(f.id) || [];
+  const auto = autoTagsOf(f);
+  if (!auto.length) return custom;
+  const out = [...custom];
+  for (const t of auto) if (!out.includes(t)) out.push(t);
+  return out;
+}
+
 function loadJSON(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -431,7 +490,7 @@ function visibleFiles() {
   const { year, liver, tag } = state.filters;
   if (year.size) list = list.filter((f) => f.year && year.has(f.year));
   if (liver.size) list = list.filter((f) => liver.has(f.liver));
-  if (tag.size) list = list.filter((f) => { const ts = shared.tagsOf(f.id); return [...tag].every((t) => ts.includes(t)); });
+  if (tag.size) list = list.filter((f) => { const ts = tagsOf(f); return [...tag].every((t) => ts.includes(t)); });
   if (state.offlineOnly) list = list.filter((f) => offlineIds.has(f.id));
   list = list.slice();
   if (state.sort === 'name') list.sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko'));
@@ -507,7 +566,7 @@ function renderFilters() {
   const years = [...new Set(state.files.map((f) => f.year).filter(Boolean))].sort().reverse();
   const livers = [...new Set(state.files.map((f) => f.liver))].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
   const tagCount = new Map();
-  for (const f of state.files) for (const t of shared.tagsOf(f.id)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+  for (const f of state.files) for (const t of tagsOf(f)) tagCount.set(t, (tagCount.get(t) || 0) + 1);
   const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
 
   const opt = (key, val, label, n) =>
@@ -571,7 +630,7 @@ function renderAll() {
 function cardHTML(f, { playlist = false } = {}) {
   const playing = player?.current?.id === f.id;
   const selected = state.selected.has(f.id);
-  const tags = shared.tagsOf(f.id);
+  const tags = tagsOf(f);
   const notes = shared.notesOf(f.id).length;
   const newN = newNotesFor(f.id);
   const parsed = parsedCache.get(f.id);
@@ -1601,14 +1660,17 @@ function openTagSheet(fileIds) {
   const ids = Array.isArray(fileIds) ? fileIds : [fileIds];
   const existing = new Set();
   for (const id of ids) for (const t of shared.tagsOf(id)) existing.add(t);
+  const autoSet = new Set();
+  for (const id of ids) { const f = fileById(id); if (f) for (const t of autoTagsOf(f)) autoSet.add(t); }
   const allTags = new Set();
-  for (const f of state.files) for (const t of shared.tagsOf(f.id)) allTags.add(t);
+  for (const f of state.files) for (const t of tagsOf(f)) allTags.add(t);
 
   const body = openSheet(ids.length > 1 ? `${ids.length}개 파일에 태그` : '태그', `
     ${ids.length === 1 ? `<div class="note" style="margin-bottom:6px">${esc(displayName(fileById(ids[0])?.name || ''))}</div>` : ''}
     <div class="taglist">
-      ${[...existing].map((t) => `<span class="tagpill">#${esc(t)}<button data-act="rm-tag" data-tag="${esc(t)}"><svg><use href="#i-close"/></svg></button></span>`).join('') || '<span class="note">아직 태그가 없어요.</span>'}
+      ${[...existing].map((t) => `<span class="tagpill">#${esc(t)}<button data-act="rm-tag" data-tag="${esc(t)}"><svg><use href="#i-close"/></svg></button></span>`).join('') || '<span class="note">직접 붙인 태그가 없어요.</span>'}
     </div>
+    ${autoSet.size ? `<div class="field"><label>자동 태그</label><div class="chiprow">${[...autoSet].map((t) => `<span class="chip auto">#${esc(t)}</span>`).join('')}</div><p class="hint">폴더 경로·파일명·앨범에서 자동으로 붙는 태그예요.</p></div>` : ''}
     <div class="field">
       <label>새 태그</label>
       <div class="row">
@@ -1859,7 +1921,7 @@ function openNowPlaying() {
   if (!player?.current) { toast('재생 중인 곡이 없어요'); return; }
   const file = player.current;
   const p = currentParsed(file);
-  const tags = shared.tagsOf(file.id);
+  const tags = tagsOf(file);
   ui.sheet = 'now';
   ui.sheetFile = file.id;
   ui.lyricIdx = -1;
@@ -2253,7 +2315,7 @@ function openMoreSheet(file, { playlist = false } = {}) {
   const cover = p.coverUrl || '';
   const saved = offlineIds.has(file.id);
   const notes = shared.notesOf(file.id).length;
-  const tags = shared.tagsOf(file.id);
+  const tags = tagsOf(file);
   const isCurrent = player?.current?.id === file.id;
   const body = openSheet('더보기', `
     <div class="act-head">
