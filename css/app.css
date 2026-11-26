@@ -335,7 +335,10 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   min-height: 16px;
 }
 .sub-meta { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
-.sub-meta > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sub-meta > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-meta > span:first-child { flex: 0 0 auto; max-width: 46%; }
+.sub-meta > span:nth-of-type(2) { flex: 1 1 auto; }
+.sub-meta .tg { flex: 0 0 auto; max-width: 45%; }
 .sub-status { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; }
 .card-sub .dot { flex: 0 0 auto; width: 2px; height: 2px; border-radius: 50%; background: var(--faint); opacity: .8; }
 .card-sub .tg { color: var(--faint); }
@@ -950,7 +953,7 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 .np-fav svg { width: 19px; height: 19px; }
 .np-fav.is-on { color: var(--star); }
 
-.np-seekwrap { flex: 0 0 auto; width: 100%; margin-top: 16px; }
+.np-seekwrap { flex: 0 0 auto; width: 100%; margin-top: 12px; }
 .np-times {
   display: flex; justify-content: space-between;
   font-size: 10.5px; color: var(--faint);
@@ -985,14 +988,15 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 .np-pills::-webkit-scrollbar { display: none; }
 .np-pill {
   flex: 0 0 auto;
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 30px; padding: 0 11px;
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 29px; padding: 0 9px;
   border-radius: 999px;
   background: var(--surface-2); color: var(--muted);
-  font-size: 11.5px; font-weight: 650;
+  font-size: 10.5px; font-weight: 650;
+  letter-spacing: -.01em;
   white-space: nowrap;
 }
-.np-pill svg { width: 13px; height: 13px; }
+.np-pill svg { width: 12px; height: 12px; }
 .np-pill.is-on { background: var(--accent-soft); color: var(--accent); }
 .np-optrow { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
 .np-optrow .chip { height: 30px; font-size: 12px; }

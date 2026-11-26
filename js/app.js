@@ -253,7 +253,7 @@ function enrich(tree) {
   for (const f of state.files) {
     const path = pathOf(f.parentId);
     f.path = path;
-    f.liver = path[0] || '기타';
+    f.liver = (path[0] || '기타').replace(/^\d{1,2}[_\s\-]+/, '');
     const yearFolder = [...path].reverse().find((n) => /^(19|20)\d{2}/.test(n));
     f.year = yearFolder ? yearFolder.slice(0, 4) : '';
   }
