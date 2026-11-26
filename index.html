@@ -16,7 +16,7 @@
 <meta name="format-detection" content="telephone=no" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'" />
-<link rel="stylesheet" href="css/app.css?v=10" />
+<link rel="stylesheet" href="css/app.css?v=11" />
 </head>
 <body>
 
@@ -45,6 +45,11 @@
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.8 7.2A1.8 1.8 0 0 1 5.6 5.4h3.2l1.9 2.2h7.7a1.8 1.8 0 0 1 1.8 1.8v7.8a1.8 1.8 0 0 1-1.8 1.8H5.6a1.8 1.8 0 0 1-1.8-1.8Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="10.5" rx="3" fill="currentColor"/><path d="M6 11.4a6 6 0 0 0 12 0M12 17.4V21M9 21h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.6" cy="12" r="1.75" fill="currentColor"/><circle cx="12" cy="12" r="1.75" fill="currentColor"/><circle cx="18.4" cy="12" r="1.75" fill="currentColor"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M4 7h10M4 12h7M4 17h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17.5 6.2v11.6m0 0 3.1-3.1m-3.1 3.1-3.1-3.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6.4h16l-6.2 7.4V20l-3.6-2v-4.2L4 6.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.6" height="6.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="13.4" y="4" width="6.6" height="6.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="13.4" width="6.6" height="6.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+  <symbol id="i-back10" viewBox="0 0 24 24"><path d="M11.6 5.4a6.6 6.6 0 1 0 6.5 7.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 2.6l3.6 2.8-3.4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="11.6" y="16.6" text-anchor="middle" font-size="7.6" font-weight="700" fill="currentColor">10</text></symbol>
+  <symbol id="i-fwd10" viewBox="0 0 24 24"><path d="M12.4 5.4a6.6 6.6 0 1 1-6.5 7.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M16 2.6l-3.6 2.8 3.4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="12.4" y="16.6" text-anchor="middle" font-size="7.6" font-weight="700" fill="currentColor">10</text></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 </svg>
 
@@ -82,7 +87,7 @@
       <button class="tab is-on" data-view="all" type="button">전체</button>
       <button class="tab" data-view="fav" type="button">즐겨찾기</button>
       <button class="tab" data-view="playlists" type="button">재생목록</button>
-      <button class="tab" data-view="folders" type="button">폴더</button>
+      <button class="tab" data-view="folders" type="button">컬렉션</button>
       <button class="tab" data-view="notes" type="button">메모</button>
       <button class="tab" data-view="lyrics" type="button">가사</button>
     </nav>
@@ -107,15 +112,14 @@
       <button class="btn-playall" id="btnPlayAll" type="button">
         <svg><use href="#i-play"/></svg><span>전체 재생</span>
       </button>
-      <button class="tb-btn" id="btnFilterToggle" type="button">
-        필터<span class="tb-count" id="filterCount" hidden></span>
-      </button>
-      <button class="tb-btn" id="btnSelectMode" type="button">
-        <span class="cbx"></span><span>선택</span>
-      </button>
-      <button class="sortbtn" id="btnSort" type="button">
-        <span id="sortLabel">최신순</span><svg class="caret"><use href="#i-chev"/></svg>
-      </button>
+      <div class="cbar-tools">
+        <button class="tool" id="btnSort" type="button" aria-label="정렬"><svg><use href="#i-sort"/></svg></button>
+        <button class="tool" id="btnFilterToggle" type="button" aria-label="필터">
+          <svg><use href="#i-filter"/></svg><span class="tb-count" id="filterCount" hidden></span>
+        </button>
+        <button class="tool" id="btnOffline" type="button" aria-label="오프라인"><svg><use href="#i-download"/></svg></button>
+        <button class="tool" id="btnShuffleAll" type="button" aria-label="셔플"><svg><use href="#i-shuffle"/></svg></button>
+      </div>
     </div>
 
     <main class="list" id="listArea"></main>
@@ -186,6 +190,6 @@
     }
   }, 6000);
 </script>
-<script type="module" src="js/app.js?v=12"></script>
+<script type="module" src="js/app.js?v=13"></script>
 </body>
 </html>

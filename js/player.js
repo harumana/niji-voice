@@ -21,6 +21,7 @@ export class Player {
     this.sleep = { mode: null, endsAt: null };
     this.loading = false;
     this.loaded = false;
+    this.rate = 1;
     this._objectUrl = null;
     this._unlocked = false;
     this._token = 0;
@@ -48,6 +49,7 @@ export class Player {
       ab: { ...this.ab },
       sleep: { ...this.sleep },
       shuffle: this.shuffle,
+      rate: this.rate,
       queueLength: this.queue.length,
     });
   }
@@ -101,6 +103,7 @@ export class Player {
     this.audio.src = resolved.url;
     this.loaded = true;
     this.audio.currentTime = 0;
+    try { this.audio.playbackRate = this.rate || 1; } catch {}
     this._parsed = resolved.parsed || null;
     this.ab = { a: null, b: null };
     this.loading = false;
@@ -250,6 +253,14 @@ export class Player {
   setShuffle(on) {
     this.shuffle = !!on;
     this.emit();
+  }
+
+  setRate(rate) {
+    const r = Number(rate) || 1;
+    this.rate = r;
+    try { this.audio.playbackRate = r; } catch {}
+    this.emit();
+    return r;
   }
 
   get parsed() { return this._parsed || null; }
