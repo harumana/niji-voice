@@ -619,10 +619,6 @@ function renderTabs() {
   for (const b of $$('#viewTabs .tab')) {
     const on = b.dataset.view === state.view;
     b.classList.toggle('is-on', on);
-    if (b.dataset.view === 'offline') {
-      const n = offlineIds.size;
-      b.textContent = n ? `오프라인 ${n}` : '오프라인';
-    }
     if (b.dataset.view === 'notes') {
       const n = totalNewNotes();
       b.textContent = n ? `메모 ${n}` : '메모';
@@ -744,9 +740,7 @@ function renderControlbar() {
   const ft = $('#btnFilterToggle');
   if (ft) ft.hidden = state.view === 'folders';
   const play = $('#btnPlayAll');
-  if (play) play.querySelector('span').textContent = state.view === 'offline'
-    ? '오프라인 재생'
-    : (state.view === 'all' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
+  if (play) play.querySelector('span').textContent = (state.view === 'all' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
   const off = $('#btnOffline');
   if (off) off.classList.toggle('is-on', !!state.offlineOnly);
   const sh = $('#btnShuffleAll');
@@ -758,7 +752,7 @@ function renderAll() {
   renderTabs();
   renderFilters();
   renderControlbar();
-  const fileViews = ['all', 'fav', 'folders', 'offline'];
+  const fileViews = ['all', 'fav', 'folders'];
   $('.controlbar').hidden = !fileViews.includes(state.view);
   renderList();
   renderSelectionBar();
@@ -842,7 +836,6 @@ function renderList() {
   if (state.view === 'playlists') return renderPlaylists();
   if (state.view === 'folders') return renderCollection();
   if (state.view === 'all' && state.folderMode === 'tree') return renderFolders();
-  if (state.view === 'offline') return renderOfflineView();
   if (state.view === 'notes') return renderNotes();
   if (state.view === 'lyrics') return renderLyricsView();
 
@@ -850,22 +843,15 @@ function renderList() {
   if (state.view === 'fav') {
     files = visibleFiles().filter((f) => isFav(f.id));
     if (!files.length) {
-      const favTotal = state.files.filter((f) => isFav(f.id)).length;
-      area.innerHTML = state.offlineOnly && favTotal
-        ? emptyHTML({
-          icon: '⬇️', title: '오프라인 저장한 즐겨찾기가 없어요',
-          desc: '즐겨찾기한 보이스를 선택해 오프라인으로 저장하면 여기 모여요.',
-          actions: '<button class="btn-line" data-act="offline-mode">전체 즐겨찾기 보기</button>',
-        })
-        : emptyHTML({
-          icon: '⭐', title: '즐겨찾기가 비어 있어요',
-          desc: '파일 카드의 별을 눌러 두면 여기에 모여요.',
-        });
+      area.innerHTML = emptyHTML({
+        icon: '⭐', title: '즐겨찾기가 비어 있어요',
+        desc: '파일 카드의 별을 눌러 두면 여기에 모여요.',
+      });
       return;
     }
     area.innerHTML = listHead(
-      `${files.length}개 즐겨찾기${state.offlineOnly ? ' · 오프라인' : ''}`,
-      `<span class="listhead-acts">${offlineToggleInline()}<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>`
+      `${files.length}개 즐겨찾기`,
+      `<span class="listhead-acts"><button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>`
     ) + files.map((f) => cardHTML(f)).join('');
     foot.textContent = '';
     return;
@@ -893,36 +879,33 @@ function renderList() {
   const summary = filterSummary();
   area.innerHTML = listHead(
     `${files.length}개 파일${summary ? ` · ${esc(summary)}` : ''} · ${sortLabel}`,
-    `<span class="listhead-acts">${folderToggleInline()}${offlineToggleInline()}<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>`
+    `<span class="listhead-acts">${folderToggleInline()}<button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>`
   ) + files.map((f) => cardHTML(f)).join('');
   foot.textContent = '';
 }
 
-/** 오프라인 저장한 보이스만 모아 보는 화면 */
-function renderOfflineView() {
-  const area = $('#listArea');
-  const foot = $('#listFoot');
-  foot.innerHTML = '';
-  const files = state.files.filter((f) => offlineIds.has(f.id));
-  if (!files.length) {
-    area.innerHTML = emptyHTML({
-      icon: '⬇️', title: '오프라인 저장한 보이스가 없어요',
-      desc: '노래를 선택한 뒤 <b>오프라인</b>을 누르거나, 보이스의 ⋯ 메뉴에서 저장하면<br>인터넷 없이도 들을 수 있어요.',
-    });
-    return;
-  }
-  files.sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true }));
-  area.innerHTML = listHead(
-    `${files.length}개 저장됨 · ${fmtBytes(files.reduce((n, f) => n + (f.size || 0), 0))}`,
-    `<span class="listhead-acts">
-      <button type="button" class="mini ${state.selectMode ? 'is-on' : ''}" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button>
-      <button type="button" class="mini" data-act="offline-clear-all">비우기</button>
-    </span>`
-  ) + files.map((f) => cardHTML(f)).join('');
-}
-
 function renderPlaylists() {
   const area = $('#listArea');
+  if (state.openPlaylistId === 'offline') {
+    const files = state.files.filter((f) => offlineIds.has(f.id))
+      .sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true }));
+    area.innerHTML = `
+      <div class="listhead">
+        <button class="mini" data-act="pl-back">‹ 재생목록</button>
+        <span>오프라인 저장 · ${files.length}개</span>
+      </div>
+      ${files.length ? files.map((f) => cardHTML(f)).join('')
+        : emptyHTML({
+          icon: '⬇️', title: '오프라인 저장한 보이스가 없어요',
+          desc: '다른 재생목록에서 보이스를 골라 <b>오프라인</b>으로 저장하면<br>여기 모여 인터넷 없이도 들을 수 있어요.',
+        })}
+      <div class="btnrow" style="margin:16px 4px 0">
+        <button class="btn-secondary" data-act="offline-play">전체 재생</button>
+        ${files.length ? '<button class="btn-secondary btn-danger" data-act="offline-clear-all">비우기</button>' : ''}
+      </div>`;
+    $('#listFoot').textContent = '';
+    return;
+  }
   if (state.openPlaylistId) {
     const pl = personal.playlists.find((p) => p.id === state.openPlaylistId);
     if (!pl) { state.openPlaylistId = null; return renderPlaylists(); }
@@ -942,7 +925,15 @@ function renderPlaylists() {
     return;
   }
 
-  const rows = personal.playlists.map((p) => `
+  const offCount = state.files.filter((f) => offlineIds.has(f.id)).length;
+  const offRow = `
+    <button class="pl-row pl-offline" data-act="pl-offline">
+      <span class="pl-ico"><svg><use href="#i-download"/></svg></span>
+      <span class="pl-name">오프라인 저장</span>
+      <span class="pl-count">${offCount}개</span>
+      <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
+    </button>`;
+  const rows = offRow + personal.playlists.map((p) => `
     <button class="pl-row" data-act="pl-open" data-id="${esc(p.id)}">
       <span class="pl-ico"><svg><use href="#i-list"/></svg></span>
       <span class="pl-name">${esc(p.name)}</span>
@@ -952,7 +943,7 @@ function renderPlaylists() {
 
   area.innerHTML = `
     <div class="listhead"><span>내 재생목록 ${personal.playlists.length}개</span></div>
-    ${rows || emptyHTML({ icon: '🎵', title: '재생목록이 없어요', desc: '원하는 보이스만 모아 두고 한 번에 들을 수 있어요.' })}
+    ${rows}
     <div style="padding:12px 4px"><button class="btn-secondary" data-act="pl-new">+ 새 재생목록</button></div>`;
 }
 
@@ -969,17 +960,6 @@ function folderToggle() {
     <input type="checkbox" data-act="folder-mode" ${state.folderMode === 'tree' ? 'checked' : ''} />
     <span>폴더별 보기</span>
   </label>`;
-}
-
-/** 오프라인 저장한 보이스만 모아 보는 토글 */
-function offlineToggleInline() {
-  const on = !!state.offlineOnly;
-  const n = state.view === 'fav'
-    ? [...offlineIds].filter((id) => isFav(id)).length
-    : offlineIds.size;
-  return `<button type="button" class="mini mini-toggle ${on ? 'is-on' : ''}" data-act="offline-mode" aria-pressed="${on}">
-    <svg><use href="${on ? '#i-check' : '#i-download'}"/></svg>오프라인${n ? ` ${n}` : ''}
-  </button>`;
 }
 
 /** 목록 머리 오른쪽에 붙는 컴팩트 토글 */
@@ -3332,9 +3312,6 @@ function bindEvents() {
     if (state.view === 'all' && state.folderMode === 'tree') {
       files = state.files.filter((f) => f.parentId === (state.folderId || state.rootId));
     }
-    if (state.view === 'offline') {
-      files = state.files.filter((f) => offlineIds.has(f.id));
-    }
     if (!files.length) { toast('재생할 파일이 없어요.'); return; }
     player.playFiles(files, 0);
     toast(`${files.length}개 재생 시작`);
@@ -3542,15 +3519,6 @@ async function onListClick(e) {
     offlineIds.clear();
     toast('오프라인 저장을 비웠어요');
     renderList();
-    renderTabs();
-    return;
-  }
-  if (act === 'offline-mode') {
-    state.offlineOnly = !state.offlineOnly;
-    renderControlbar();
-    renderList();
-    renderSelectionBar();
-    toast(state.offlineOnly ? '오프라인 저장한 보이스만 모았어요' : '오프라인 필터를 풀었어요');
     return;
   }
   if (act === 'folder-mode') {
@@ -3605,6 +3573,14 @@ async function onListClick(e) {
     return;
   }
   if (act === 'pl-open') { state.openPlaylistId = action.dataset.id; renderList(); return; }
+  if (act === 'pl-offline') { state.openPlaylistId = 'offline'; renderList(); return; }
+  if (act === 'offline-play') {
+    const files = state.files.filter((f) => offlineIds.has(f.id));
+    if (!files.length) { toast('오프라인 저장한 보이스가 없어요.'); return; }
+    player.playFiles(files, 0);
+    toast(`${files.length}개 재생 시작`);
+    return;
+  }
   if (act === 'pl-back') { state.openPlaylistId = null; renderList(); return; }
   if (act === 'pl-play') {
     const pl = personal.playlists.find((p) => p.id === state.openPlaylistId);
