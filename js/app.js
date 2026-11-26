@@ -195,6 +195,21 @@ function seriesKeyOf(f) {
   return `${f.liver || ''}|${f.year || ''}|${name || displayName(f.name)}`;
 }
 
+/* ── 폴더 커버 이미지 id 지도 — 한 번 찾으면 저장해 두고, 다음 실행부터는 조회 없이 바로 쓴다 ── */
+let folderCoverMap = null;
+const folderCoverMapKey = () => `niji.covermap.${settings.rootId || 'default'}`;
+function coverMap() {
+  if (!folderCoverMap) folderCoverMap = new Map(Object.entries(loadJSON(folderCoverMapKey(), {})));
+  return folderCoverMap;
+}
+function rememberFolderCover(folderId, imageId) {
+  if (!folderId || !imageId) return;
+  const m = coverMap();
+  if (m.get(folderId) === imageId) return;
+  m.set(folderId, imageId);
+  try { saveJSON(folderCoverMapKey(), Object.fromEntries(m)); } catch {}
+}
+
 /* series-level cover cache: one fetch per series, shared by its tracks */
 const seriesCover = new Map();      // seriesKey -> { thumb, full }
 const seriesPending = new Set();    // seriesKey being fetched
@@ -270,6 +285,8 @@ function saveJSON(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+const TREE_CACHE_V = 5;
+
 /* ── offline-first cache (instant start) ── */
 const treeCacheKey = (rootId) => `niji.tree.${rootId || 'default'}`;
 const metaCacheKey = (rootId) => `niji.meta.${rootId || 'default'}`;
@@ -279,6 +296,7 @@ function saveTreeCache(tree) {
   try {
     localStorage.setItem(treeCacheKey(settings.rootId || tree.root.id), JSON.stringify({
       savedAt: Date.now(),
+      v: TREE_CACHE_V,
       root: tree.root,
       folders: tree.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId, driveId: f.driveId || null })),
       files: tree.files.map((f) => ({
@@ -312,8 +330,6 @@ function loadTreeCache(rootId) {
     return best?.root?.id && Array.isArray(best.files) ? best : null;
   } catch { return null; }
 }
-
-const TREE_CACHE_V = 4;
 
 function saveMetaCache(data) {
   if (!data) return;
@@ -423,9 +439,11 @@ function enrich(tree) {
     return names;
   };
 
+  const cmap = coverMap();
   for (const f of state.files) {
     const path = pathOf(f.parentId);
     f.path = path;
+    if (!f.folderCoverId && cmap.has(f.parentId)) f.folderCoverId = cmap.get(f.parentId);
     f.liver = (path[0] || '기타').replace(/^\d{1,2}[_\s\-]+/, '');
     const yearFolder = [...path].reverse().find((n) => /(19|20)\d{2}/.test(n));
     const ym = yearFolder ? yearFolder.match(/(19|20)\d{2}/) : null;
@@ -502,6 +520,7 @@ async function loadLive({ interactive = false, silent = false } = {}) {
     state.folderId = tree.root.id;
     await refreshOfflineIds();
     await primeCache();
+    await mergeOfflineIntoLibrary();
     renderAll();
     lastMetaRefresh = Date.now();
     if (!silent) toast(`${state.files.length}개 파일을 불러왔어요`);
@@ -620,10 +639,11 @@ async function offlineLibrary() {
   try { rows = await db.all('audio'); } catch { return []; }
   const out = [];
   for (const r of rows) {
-    const known = state.files.find((f) => f.id === r.fileId);
-    const m = r.meta || (known ? offlineMetaOf(known) : null);
-    if (!m) continue;
-    out.push({ ...m, path: m.path || known?.path || [], offline: true });
+    const id = r?.fileId || r?.id;
+    if (!id) continue;
+    const known = state.files.find((f) => f.id === id);
+    const base = r.meta || (known ? offlineMetaOf(known) : { id, name: r.name || id, path: [] });
+    out.push({ ...base, id, name: base.name || r.name || id, path: base.path || known?.path || [], offline: true });
   }
   return out;
 }
@@ -1105,10 +1125,31 @@ function watchCovers() {
   coverScanTimer = setTimeout(scanCovers, 60);
 }
 
+let coverRetryTimer = 0;
+let coverRetries = 0;
 function scanCovers() {
   const targets = $$('#listArea [data-cover]:not([data-painted])');
   if (!targets.length) return;
-  if (state.mode !== 'live' || !drive.connected) return;
+  if (state.mode !== 'live' || !drive.connected) {
+    // 연결이 아직 안 붙었을 뿐이다 — 붙을 때까지 천천히 다시 시도한다
+    const ready = targets.some((el) => {
+      const f = fileById(el.dataset.cover);
+      return f && (f.folderCoverId || (f.parentId && coverMap().has(f.parentId)));
+    });
+    if (!ready) {
+      // 커버 id를 아직 모른다 — 연결이 붙을 때까지 천천히 다시 시도한다
+      if (coverRetries < 40) {
+        coverRetries += 1;
+        clearTimeout(coverRetryTimer);
+        coverRetryTimer = setTimeout(scanCovers, 800);
+      }
+      return;
+    }
+    // id를 아니까 IndexedDB에 저장해 둔 커버로 네트워크 없이도 그린다
+    clearTimeout(coverRetryTimer);
+    if (!drive.connected) coverRetries = 0;
+  }
+  if (drive.connected) coverRetries = 0;
   if (!('IntersectionObserver' in window)) {
     for (const el of targets.slice(0, 10)) queueCover(el.dataset.cover);
     return;
@@ -1125,9 +1166,11 @@ function scanCovers() {
 }
 
 function queueCover(fileId) {
-  if (!fileId || state.mode !== 'live' || !drive.connected) return;
+  if (!fileId || state.mode !== 'live') return;
   const file = fileById(fileId);
   if (!file) return;
+  const hasFolderCover = !!(file.folderCoverId || (file.parentId && coverMap().has(file.parentId)));
+  if (!drive.connected && !hasFolderCover) return;
   const key = seriesKeyOf(file);
   if (seriesCover.has(key)) { paintSeries(key); return; }
   const ownFile = fileById(fileId);
@@ -1156,12 +1199,17 @@ const coverBlobs = new Map();       // drive image id -> object url
 const coverBlobPending = new Map(); // drive image id -> promise
 
 async function folderCoverInfo(file) {
-  let id = file?.folderCoverId;
+  let id = file?.folderCoverId || (file?.parentId ? coverMap().get(file.parentId) : null);
   if (!id && file?.parentId) {
-    // 예전 캐시에는 폴더 커버 정보가 없다 — 그때는 폴더를 한 번 조회해 채운다
+    // 처음 보는 폴더만 조회한다 — 찾은 id는 저장해 두고 다음부터는 조회하지 않는다
     const img = await drive.folderImage(file.parentId).catch(() => null);
-    if (img) { id = img.id; file.folderCoverId = img.id; }
+    if (img) {
+      id = img.id;
+      file.folderCoverId = img.id;
+      rememberFolderCover(file.parentId, img.id);
+    }
   }
+  if (id && file) file.folderCoverId = id;
   if (!id) return null;
   if (coverBlobs.has(id)) return { thumb: coverBlobs.get(id), full: coverBlobs.get(id) };
   if (coverBlobPending.has(id)) return coverBlobPending.get(id);
@@ -2473,6 +2521,7 @@ async function saveSettingsFromUI() {
   const clientId = ($('#setClientId')?.value || '').trim();
   const rootId = parseFolderInput($('#setRootId')?.value || '');
   settings.clientId = clientId;
+  if (rootId !== settings.rootId) folderCoverMap = null;
   settings.rootId = rootId;
   settings.includeBackup = !!$('#setBackup')?.checked;
   const autoEl = $('#setAutoSync');
@@ -4045,9 +4094,15 @@ async function boot() {
       }
       renderHeader();
       if (drive.connected) {
-        // 저장해 둔 목록은 영구 캐시로 쓴다 — 새로 받는 건 직접 새로고침할 때만
-        if (!fromCache) syncQuietly();
-        else loadLive({ interactive: false, silent: true }).catch(() => {});
+        // 토큰이 늦게 붙어도 커버는 이때부터 그린다
+        coverRetries = 0;
+        watchCovers();
+        // 저장해 둔 목록은 영구 캐시로 쓴다 — 새로 받는 건 자동 새로고침을 켠 경우뿐
+        if (fromCache) {
+          if (personal.autoSync) loadLive({ interactive: false, silent: true }).catch(() => {});
+        } else if (personal.autoSync || !state.files.length) {
+          syncQuietly();
+        }
       }
     })();
     keepTokenFresh();
