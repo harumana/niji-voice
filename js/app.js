@@ -1858,19 +1858,40 @@ function openLiverSheet() {
   const cur = currentLiver(livers);
   ui.sheet = 'liver';
   const units = unitNames();
+  const tab = state.liverSheetTab === 'unit' ? 'unit' : 'liver';
   const row = (name, n) => `
         <button type="button" class="liver-row ${name === cur ? 'is-on' : ''}" data-act="choose-liver" data-liver="${esc(name)}">
           <span class="lib-avatar sm" style="${liverTone(name)}">${esc(liverInitial(name))}</span>
-          <span class="liver-name">${esc(name)}${units.has(name) ? '<span class="liver-tag">유닛</span>' : ''}</span>
+          <span class="liver-name">${esc(name)}</span>
           <span class="liver-count">${n}</span>
           <span class="liver-check">${name === cur ? '<svg><use href="#i-check"/></svg>' : ''}</span>
         </button>`;
+  const listHTML = (which) => {
+    const rows = livers.filter(([name]) => units.has(name) === (which === 'unit'));
+    if (!rows.length) {
+      return which === 'unit'
+        ? '<div class="liver-empty">아직 유닛이 없어요. 보이스 드라마 태그를 읽는 중이면 잠시 뒤 다시 열어 주세요.</div>'
+        : '<div class="liver-empty">라이버가 없어요.</div>';
+    }
+    return rows.map(([name, n]) => row(name, n)).join('');
+  };
   const body = openSheet('라이버 선택', `
-    <div class="liverlist">
-      ${livers.map(([name, n]) => row(name, n)).join('')}
+    <div class="seg liverSeg">
+      <button type="button" data-act="liver-tab" data-tab="liver" class="${tab === 'liver' ? 'is-on' : ''}">라이버</button>
+      <button type="button" data-act="liver-tab" data-tab="unit" class="${tab === 'unit' ? 'is-on' : ''}">유닛</button>
     </div>
+    <div class="liverlist" id="liverSheetList">${listHTML(tab)}</div>
   `, { tall: true });
   body.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-act="liver-tab"]');
+    if (t) {
+      state.liverSheetTab = t.dataset.tab;
+      saveJSON(PERSONAL_KEY, personal);
+      body.querySelectorAll('[data-act="liver-tab"]').forEach((b) => b.classList.toggle('is-on', b === t));
+      const list = body.querySelector('#liverSheetList');
+      if (list) list.innerHTML = listHTML(state.liverSheetTab);
+      return;
+    }
     const b = e.target.closest('[data-act="choose-liver"]');
     if (!b) return;
     state.collectionLiver = b.dataset.liver;

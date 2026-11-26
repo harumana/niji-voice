@@ -1564,6 +1564,8 @@ button.badge.np-tag::before { content: "#"; opacity: .55; margin-right: 1px; }
 }
 .fav-liver.is-on { color: var(--text); font-weight: 800; }
 .fav-liver.is-on .fl-av { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px #111827; }
+.liverSeg { margin: 0 0 10px; width: max-content; }
+.liver-empty { padding: 22px 10px; color: var(--faint); font-size: 12.5px; line-height: 1.6; text-align: center; }
 .liver-tag { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #eef1f6; color: #6b7280; font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
 .lib-fav { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; color: #ffb3c8; flex: 0 0 auto; }
 .lib-fav svg { width: 19px; height: 19px; }
