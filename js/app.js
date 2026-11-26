@@ -1432,6 +1432,27 @@ function liverAliases(name) {
   return [...new Set(list.map(normName).filter(Boolean))];
 }
 
+/** 보이스 드라마처럼 분류 폴더에 있는 파일은 아직 태그를 안 읽었을 수 있다 — 뒤에서 읽어 라이버를 채운다 */
+let liverScanRunning = false;
+async function scanCategoryLivers() {
+  if (liverScanRunning || state.mode !== 'live') return;
+  liverScanRunning = true;
+  try {
+    for (let guard = 0; guard < 40; guard++) {
+      const target = state.files.find((f) => f.notLiver && !parsedCache.has(f.id) && !cachedEmpty.has(f.id));
+      if (!target) break;
+      const before = (target._livers || []).length;
+      const p = await loadParsed(target, { network: true }).catch(() => null);
+      target._liverTried = false;
+      if (p) {
+        const hits = liversOf(target);
+        if (hits.length && hits.length !== before) renderList();
+      }
+    }
+  } catch {}
+  liverScanRunning = false;
+}
+
 /** 라이버 폴더 이름들 (보이스 드라마·원본 백업 같은 분류 폴더 제외) */
 function liverFolderNames() {
   const out = new Set();
@@ -1447,12 +1468,12 @@ function liversOf(f) {
   if (!f) return [];
   const own = f.liver || '기타';
   if (isLiverName(liverKey(own))) return [own];
-  if (f._livers) return f._livers;
+  if (f._liverTried) return f._livers || [];
   const p = parsedCache.get(f.id) || {};
-  if (!p.artist && !p.album && !f._liverTried) return [];
+  if (!p.artist && !p.album && !p.albumArtist) return [];
   const hay = normName([p.artist, p.album, displayName(f.name), (f.path || []).slice(1).join(' ')].join(' '));
   const hits = liverFolderNames().filter((name) => liverAliases(name).some((a) => a && hay.includes(a)));
-  f._livers = hits;
+  f._livers = hits.length ? hits : [own];   // 참여 라이버를 못 찾으면 분류 폴더에 그대로 둔다
   f._liverTried = true;
   return hits;
 }
@@ -1736,6 +1757,7 @@ function renderCollection() {
   prefetchSeriesCovers(flat);
   queueVisibleCovers();
   watchCovers();
+  scanCategoryLivers();
 }
 
 /** warm the covers of the series on screen, five at a time */
@@ -2127,6 +2149,7 @@ function hydrate(rec) {
   const out = {
     title: rec.title || '',
     artist: rec.artist || '',
+    albumArtist: rec.albumArtist || '',
     album: rec.album || '',
     year: rec.year || '',
     lyrics: rec.lyrics || [],
@@ -2188,6 +2211,7 @@ async function loadParsed(file, { network = true } = {}) {
     fileId: file.id,
     title: tag.title || '',
     artist: tag.artist || '',
+    albumArtist: tag.albumArtist || '',
     album: tag.album || '',
     year: tag.year || '',
     lyrics: tag.lyrics || [],
