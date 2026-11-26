@@ -50,6 +50,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -431,7 +433,8 @@ input, textarea, select { font: inherit; color: inherit; }
 
 /* ───────── selection bar ───────── */
 .selbar {
-  position: fixed; left: 10px; right: 10px;
+  position: fixed; left: 50%; transform: translateX(-50%);
+  width: min(calc(100% - 20px), 600px);
   bottom: calc(var(--player-h) + var(--safe-b) + 8px);
   z-index: 40;
   display: flex; align-items: center; gap: 10px;
@@ -440,7 +443,7 @@ input, textarea, select { font: inherit; color: inherit; }
   background: color-mix(in srgb, var(--text) 92%, transparent);
   color: #fff;
   box-shadow: var(--shadow-l);
-  animation: rise .18s ease;
+  animation: fade .16s ease;
 }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
 .selcount { font-size: 13px; font-weight: 700; white-space: nowrap; }
@@ -454,7 +457,9 @@ input, textarea, select { font: inherit; color: inherit; }
 
 /* ───────── player ───────── */
 .player {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  position: fixed; left: 50%; bottom: 0; z-index: 50;
+  transform: translateX(-50%);
+  width: 100%; max-width: 640px;
   padding: 0 12px calc(6px + var(--safe-b));
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: saturate(180%) blur(20px);
@@ -553,7 +558,7 @@ input, textarea, select { font: inherit; color: inherit; }
 .overlay[hidden] { display: none; }
 
 .sheet {
-  width: 100%;
+  width: 100%; max-width: 640px; margin: 0 auto;
   max-height: 92dvh;
   display: flex; flex-direction: column;
   background: var(--surface);

@@ -191,6 +191,7 @@ function useDemo() {
   shared = new LocalMeta(saved || demoMeta());
   enrich(DEMO_TREE);
   state.folderId = 'demo-root';
+  for (const f of state.files) parsedCache.set(f.id, { ...demoParsed(f), demo: true });
   renderAll();
 }
 
@@ -223,6 +224,7 @@ async function loadLive({ interactive = false } = {}) {
     state.liveError = '';
     enrich(tree);
     state.folderId = tree.root.id;
+    for (const f of DEMO_TREE.files) parsedCache.delete(f.id);
     await refreshOfflineIds();
     await primeCache();
     renderAll();
@@ -374,6 +376,9 @@ function renderAll() {
   renderTabs();
   renderFilters();
   renderControlbar();
+  const fileViews = ['all', 'fav', 'folders'];
+  $('#filters').hidden = !fileViews.includes(state.view);
+  $('.controlbar').hidden = !fileViews.includes(state.view);
   renderList();
   renderSelectionBar();
 }
@@ -1601,6 +1606,7 @@ function bindEvents() {
     else toast('A–B 반복을 해제했어요');
   });
   $('#btnLyrics').addEventListener('click', () => { if (player.current) openLyricsSheet(player.current); else toast('재생 중인 곡이 없어요'); });
+  $('#btnTimer').addEventListener('click', openSleep);
   $('#btnMemo').addEventListener('click', () => { if (player.current) openMemoSheet(player.current); else toast('재생 중인 곡이 없어요'); });
   $('#btnQueue').addEventListener('click', openQueue);
   $('#btnNow').addEventListener('click', openNowPlaying);

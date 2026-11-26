@@ -251,7 +251,7 @@ export function demoMeta() {
     notes: {
       'demo-1': [
         { id: 'dn1', author: '친구', text: '08.6초 "ゆっくり休んで" 부분 목소리 진짜 좋다', t: 8.6, createdAt: iso(now - 1000 * 60 * 95) },
-        { id: 'dn2', author: '나', text: '여기부터가 하이라이트', t: 13.4, createdAt: iso(now - 1000 * 60 * 60 * 30) },
+        { id: 'dn2', author: '게스트', text: '여기부터가 하이라이트', t: 13.4, createdAt: iso(now - 1000 * 60 * 60 * 30) },
       ],
       'demo-3': [
         { id: 'dn3', author: '친구', text: '잠들기 전에 듣기 좋음', t: 16.4, createdAt: iso(now - 1000 * 60 * 12) },
