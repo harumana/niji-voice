@@ -551,7 +551,13 @@ function fileById(id) { return state.files.find((f) => f.id === id) || null; }
 function visibleFiles() {
   let list = state.files;
   const q = state.search.trim().toLowerCase();
-  if (q) list = list.filter((f) => f.name.toLowerCase().includes(q));
+  if (q) {
+    list = list.filter((f) => {
+      const hay = [displayName(f.name || ''), f.liver || '', seriesNameOf(f), tagsOf(f).join(' ')]
+        .join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
   const { year, liver, tag } = state.filters;
   if (year.size) list = list.filter((f) => f.year && year.has(f.year));
   if (liver.size) list = list.filter((f) => liver.has(f.liver));
@@ -1043,23 +1049,27 @@ const coverBlobs = new Map();       // drive image id -> object url
 const coverBlobPending = new Map(); // drive image id -> promise
 
 async function folderCoverInfo(file) {
-  const id = file?.folderCoverId;
+  let id = file?.folderCoverId;
+  if (!id && file?.parentId) {
+    // 예전 캐시에는 폴더 커버 정보가 없다 — 그때는 폴더를 한 번 조회해 채운다
+    const img = await drive.folderImage(file.parentId).catch(() => null);
+    if (img) { id = img.id; file.folderCoverId = img.id; }
+  }
   if (!id) return null;
   if (coverBlobs.has(id)) return { thumb: coverBlobs.get(id), full: coverBlobs.get(id) };
   if (coverBlobPending.has(id)) return coverBlobPending.get(id);
   const job = (async () => {
     const saved = await db.get('covers', id).catch(() => null);
-    if (saved?.blob) {
+    if (saved?.blob && String(saved.blob.type || '').startsWith('image/')) {
       const url = URL.createObjectURL(saved.blob);
       coverBlobs.set(id, url);
       return { thumb: url, full: url };
     }
-    const url = await drive.mediaBlobUrl(id);
+    if (saved) await db.del('covers', id).catch(() => {});
+    const blob = await drive.mediaBlob(id);
+    const url = URL.createObjectURL(blob);
     coverBlobs.set(id, url);
-    try {
-      const blob = await (await fetch(url)).blob();
-      await db.put('covers', id, { blob });
-    } catch {}
+    db.put('covers', id, { blob }).catch(() => {});
     return { thumb: url, full: url };
   })();
   coverBlobPending.set(id, job);
@@ -1119,6 +1129,13 @@ function paintSeries(key) {
     if (!f || seriesKeyOf(f) !== key) continue;
     el.dataset.painted = '1';
     el.innerHTML = `<img src="${url}" alt="" loading="lazy" />`;
+    const img = el.querySelector('img');
+    if (img) img.addEventListener('error', () => {
+      seriesCover.delete(key);
+      el.dataset.painted = '';
+      el.innerHTML = '';
+      queueCover(el.dataset.cover);
+    }, { once: true });
   }
 }
 
@@ -1521,6 +1538,10 @@ function renderFolders() {
     .sort((a, b) => displayName(a.name).localeCompare(displayName(b.name), 'ko', { numeric: true }));
 
   const crumbHTML = `
+    <div class="listhead">
+      <span>폴더별 보기</span>
+      <span class="listhead-acts">${folderToggleInline()}</span>
+    </div>
     <div class="crumbs">
       <button data-act="go-root">NIJI VOICE</button>
       ${crumbs.map((c) => `<span class="sep">›</span><button data-act="go-folder" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('')}
@@ -3253,6 +3274,21 @@ function bindEvents() {
   });
 
   on('#btnFilterToggle', 'click', openFilterSheet);
+  on('#btnSearch', 'click', () => {
+    const bar = $('#searchBar');
+    const input = $('#searchInput');
+    if (!bar) return;
+    const opening = bar.hidden;
+    bar.hidden = !opening;
+    $('#btnSearch')?.classList.toggle('is-on', opening);
+    if (opening) setTimeout(() => input?.focus(), 40);
+    else if (state.search) {
+      state.search = '';
+      if (input) input.value = '';
+      if ($('#btnClearSearch')) $('#btnClearSearch').hidden = true;
+      renderList();
+    }
+  });
 
   $('#searchInput').addEventListener('input', debounce((e) => {
     state.search = e.target.value;

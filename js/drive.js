@@ -236,7 +236,22 @@ export class Drive {
   async mediaBlobUrl(id) {
     const res = await this.raw(`${API}/files/${encodeURIComponent(id)}?alt=media`);
     const blob = await res.blob();
+    if (!String(blob.type || '').startsWith('image/')) throw new Error('이미지가 아니에요');
     return URL.createObjectURL(blob);
+  }
+
+  async mediaBlob(id) {
+    const res = await this.raw(`${API}/files/${encodeURIComponent(id)}?alt=media`);
+    const blob = await res.blob();
+    if (!String(blob.type || '').startsWith('image/')) throw new Error('이미지가 아니에요');
+    return blob;
+  }
+
+  /** 폴더 안의 대표 이미지(cover.png 등)를 찾는다 — 캐시에 폴더 커버 정보가 없을 때 */
+  async folderImage(folderId) {
+    if (!folderId) return null;
+    const children = await this.listChildren(folderId);
+    return children.find((f) => isImage(f)) || null;
   }
 
   async listChildren(folderId) {

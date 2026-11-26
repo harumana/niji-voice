@@ -123,11 +123,15 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 
 .search {
   display: flex; align-items: center; gap: 8px;
-  height: 38px; margin-top: 2px; padding: 0 12px;
+  height: 38px; margin-top: 8px; padding: 0 12px;
+  animation: searchIn .18s ease;
   background: var(--fill);
   border-radius: 12px;
 }
 .search-ico { width: 16px; height: 16px; color: var(--faint); flex: 0 0 auto; }
+.search[hidden] { display: none; }
+@keyframes searchIn { from { opacity: 0; transform: translateY(-4px); } }
+#btnSearch.is-on { background: var(--fill); color: var(--text); }
 .search input {
   flex: 1 1 auto; min-width: 0; height: 100%;
   border: 0; background: none; outline: none;
