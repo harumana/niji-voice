@@ -1296,7 +1296,6 @@ function openLyricsSheet(file) {
     return;
   }
   ui.sheet = 'lyrics';
-  const rec = parsedCache.get(file.id);
   const lyrics = rec?.lyrics || [];
   const transcript = shared.data.transcripts?.[file.id];
   const body = openSheet('자막', `
