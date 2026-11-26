@@ -1459,6 +1459,14 @@ function renderThemeDetail(tag) {
     if (!byLiver.has(k)) byLiver.set(k, []);
     byLiver.get(k).push(f);
   }
+  const compact = state.themeCompact !== false;
+  const shortLiver = (n) => String(n || '기타').replace(/\s*\([^)]*\)\s*$/, '');
+  const cells = [...byLiver.entries()].map(([liver, list]) => `
+    <div class="tcell">
+      <div class="tcell-name">${esc(shortLiver(liver))}<span>${list.length}</span></div>
+      <div class="tcell-tracks">${list.map((f) => `
+        <button type="button" class="ttrk ${player?.current?.id === f.id ? 'is-on' : ''}" data-act="theme-track" data-id="${esc(f.id)}" title="${esc(displayTitleOf(f, { short: true }))}" aria-label="${esc(liver)} ${esc(trackNoFor(f))}">${esc(trackNoFor(f))}</button>`).join('')}</div>
+    </div>`).join('');
   const blocks = [...byLiver.entries()].map(([liver, list]) => `
     <h3 class="col-liver">${esc(liver)}<span>${list.length}</span></h3>
     <div class="sd-tracks">${list.map((f) => cardHTML(f)).join('')}</div>`).join('');
@@ -1467,9 +1475,14 @@ function renderThemeDetail(tag) {
       <button type="button" class="sd-ico back" data-act="close-theme" aria-label="뒤로"><svg><use href="#i-chevron"/></svg></button>
     </div>
     <h2 class="sd-title">${esc(tag)}</h2>
-    <div class="sd-meta">보이스 ${files.length}개 · 라이버 ${byLiver.size}명</div>
+    <div class="sd-meta">보이스 ${files.length}개 · 라이버 ${byLiver.size}명
+      <span class="theme-view">
+        <button type="button" class="${compact ? 'is-on' : ''}" data-act="theme-view" data-compact="1">번호</button>
+        <button type="button" class="${compact ? '' : 'is-on'}" data-act="theme-view" data-compact="0">목록</button>
+      </span>
+    </div>
     <button type="button" class="sd-play" data-act="theme-play"><svg><use href="#i-play"/></svg>전체 재생</button>
-    ${blocks}
+    ${compact ? `<div class="theme-grid">${cells}</div>` : blocks}
   `;
   $('#listFoot').textContent = '';
 }
@@ -1491,6 +1504,7 @@ function renderThemeIndex() {
 function renderCollection() {
   const area = $('#listArea');
   if (state.collectionAxis === 'theme') {
+    if (state.themeCompact == null) state.themeCompact = personal.themeCompact !== false;
     if (state.openTheme) return renderThemeDetail(state.openTheme);
     return renderThemeIndex();
   }
@@ -3916,6 +3930,21 @@ async function onListClick(e) {
   }
   if (act === 'open-theme') { state.openTheme = action.dataset.tag || ''; renderList(); return; }
   if (act === 'close-theme') { state.openTheme = null; renderList(); return; }
+  if (act === 'theme-view') {
+    state.themeCompact = action.dataset.compact === '1';
+    personal.themeCompact = state.themeCompact;
+    saveJSON(PERSONAL_KEY, personal);
+    renderList();
+    return;
+  }
+  if (act === 'theme-track') {
+    const f = fileById(action.dataset.id);
+    if (!f) return;
+    const list = state.files.filter((x) => themeOf(x).includes(state.openTheme || ''));
+    const at = Math.max(0, list.findIndex((x) => x.id === f.id));
+    player.playFiles(list, at);
+    return;
+  }
   if (act === 'theme-play') {
     const list = state.files.filter((f) => themeOf(f).includes(state.openTheme || ''));
     if (!list.length) { toast('재생할 보이스가 없어요.'); return; }
