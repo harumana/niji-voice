@@ -889,7 +889,13 @@ function renderControlbar() {
   const ft = $('#btnFilterToggle');
   if (ft) ft.hidden = state.view === 'folders';
   const play = $('#btnPlayAll');
-  if (play) play.querySelector('span').textContent = (state.view === 'all' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
+  if (play) {
+    const label = (state.view === 'all' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
+    const sp = play.querySelector('span');
+    if (sp) sp.textContent = label;
+    play.setAttribute('aria-label', label);
+    play.setAttribute('title', label);
+  }
   const off = $('#btnOffline');
   if (off) off.classList.toggle('is-on', !!state.offlineOnly);
   const sh = $('#btnShuffleAll');
