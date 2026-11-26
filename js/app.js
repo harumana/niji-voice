@@ -1118,6 +1118,8 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
   body.innerHTML = html;
   $('#sheet').classList.toggle('is-tall', tall && !full);
   $('#sheet').classList.toggle('is-full', !!full);
+  const closeUse = $('#sheetClose')?.querySelector('use');
+  if (closeUse) closeUse.setAttribute('href', full ? '#i-chevd' : '#i-close');
   $('#overlay').hidden = false;
   body.scrollTop = 0;
   document.body.style.overflow = 'hidden';
@@ -1581,7 +1583,6 @@ function npPanelHTML(file, seg) {
   if (seg === 'memo') return npMemoHTML(file);
   return `
     <div class="np-panel-head">
-      <span>가사</span>
       <button type="button" data-act="np-edit-lyrics">자막 편집</button>
     </div>
     ${p.lyrics?.length ? `<div class="lyrics" id="sheetLyrics">${p.lyrics.map((l, i) => `
@@ -1600,18 +1601,21 @@ function openNowPlaying() {
   ui.sheetFile = file.id;
   ui.lyricIdx = -1;
   ui.seg = 'lyrics';
-  const body = openSheet('지금 재생 중', `
+  const eyebrow = p.album || file.liver || '지금 재생 중';
+  const body = openSheet(eyebrow, `
     <div class="np">
-      <div class="np-cover" id="npCover">${p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</div>
-      <div class="np-head">
-        <div class="np-info">
-          <div class="np-title" id="npTitle">${esc(p.title || displayName(file.name))}</div>
-          <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
-          ${tags.length ? `<div class="np-tags">${tags.map((t) => `<span class="badge tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      <div class="np-hero">
+        <div class="np-cover" id="npCover">${p.coverUrl ? `<img src="${p.coverUrl}" alt="" />` : '<svg><use href="#i-mic"/></svg>'}</div>
+        <div class="np-head">
+          <div class="np-info">
+            <div class="np-title" id="npTitle">${esc(p.title || displayName(file.name))}</div>
+            <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
+            ${tags.length ? `<div class="np-tags" id="npTags">${tags.map((t) => `<button type="button" class="badge np-tag" data-act="np-tag" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
+          </div>
+          <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
+            <svg><use href="${isFav(file.id) ? '#i-star-fill' : '#i-star'}"/></svg>
+          </button>
         </div>
-        <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
-          <svg><use href="${isFav(file.id) ? '#i-star-fill' : '#i-star'}"/></svg>
-        </button>
       </div>
       <div class="np-seekwrap">
         <input id="npSeek" type="range" min="0" max="1000" step="1" value="0" aria-label="재생 위치" />
@@ -1698,6 +1702,28 @@ function openNowPlaying() {
       renderSelectionBar();
       return;
     }
+    if (act === 'np-tag') {
+      const tag = b.dataset.tag || '';
+      closeSheet();
+      state.view = 'all';
+      state.openPlaylistId = null;
+      state.selectMode = false;
+      state.search = '';
+      const se = $('#searchInput');
+      if (se) se.value = '';
+      const cb = $('#btnClearSearch');
+      if (cb) cb.hidden = true;
+      state.filters.year.clear();
+      state.filters.liver.clear();
+      state.filters.tag.clear();
+      if (tag) state.filters.tag.add(tag);
+      state.filterBarOpen = true;
+      renderAll();
+      const sc = $('#scroller');
+      if (sc) sc.scrollTo({ top: 0 });
+      if (tag) toast(`#${tag} 태그로 모았어요`);
+      return;
+    }
     if (act === 'np-play') { if (player.current?.id === file.id) player.toggle(); else playFile(file); return; }
     if (act === 'np-prev') { player.prev(); return; }
     if (act === 'np-next') { player.next(); return; }
@@ -1762,7 +1788,14 @@ function openNowPlaying() {
 function updateNowSheet(st) {
   const cur = st.current;
   if (!cur) return;
+  if (ui.sheet === 'now' && ui.sheetFile && cur.id !== ui.sheetFile) {
+    openNowPlaying();
+    return;
+  }
   const p = currentParsed(cur);
+  const eyebrow = p.album || cur.liver || '지금 재생 중';
+  const titleEl = $('#sheetTitle');
+  if (titleEl) titleEl.textContent = eyebrow;
   const dur = st.duration || p.duration || shared?.data?.durations?.[cur.id] || 0;
   const pct = dur > 0 ? Math.min(100, (st.currentTime / dur) * 100) : 0;
   const seek = $('#npSeek');
@@ -1783,8 +1816,7 @@ function updateNowSheet(st) {
   const sl = $('#npSleep');
   if (sl) sl.classList.toggle('is-on', !!st.sleep.mode);
   const title = $('#npTitle');
-  if (title) title.textContent = p.title || displayName(cur.name);
-  const sub = $('#npSub');
+  if (title) title.textContent = p.title || displayName(cur.name);  const sub = $('#npSub');
   if (sub) sub.textContent = [p.artist, p.album].filter(Boolean).join(' · ') || cur.liver || '';
   const cov = $('#npCover');
   if (cov) {
