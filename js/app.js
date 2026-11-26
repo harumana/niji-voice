@@ -458,7 +458,10 @@ function enrich(tree) {
     const path = pathOf(f.parentId);
     f.path = path;
     if (!f.folderCoverId && cmap.has(f.parentId)) f.folderCoverId = cmap.get(f.parentId);
-    f.liver = (path[0] || '기타').replace(/^\d{1,2}[_\s\-]+/, '');
+    // 라이버 폴더가 아닌 분류 폴더(보이스 드라마·원본 백업)는 라이버로 세지 않는다
+    const top = (path[0] || '').replace(/^\d{1,2}[_\s\-]+/, '').trim();
+    f.liver = top || '기타';
+    f.notLiver = !isLiverName(top);
     const yearFolder = [...path].reverse().find((n) => /(19|20)\d{2}/.test(n));
     const ym = yearFolder ? yearFolder.match(/(19|20)\d{2}/) : null;
     f.year = ym ? ym[0] : '';
@@ -1345,7 +1348,8 @@ function collectLivers() {
     const liver = f.liver || '기타';
     map.set(liver, (map.get(liver) || 0) + 1);
   }
-  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true }));
+  const rank = (name) => (isLiverName(name) ? 0 : 1);
+  return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ko', { numeric: true }));
 }
 
 function currentLiver(livers) {
@@ -1384,6 +1388,17 @@ const LIVER_COLORS = {
 };
 
 /** '甲斐田晴(카이다 하루)' → '甲斐田晴' */
+/** 보이스 드라마·원본 백업처럼 라이버가 아닌 분류 폴더 */
+const NON_LIVER = /^(보이스\s*드라마|ボイスドラマ|원본\s*백업|기타)$/;
+
+function isLiverName(name) {
+  const n = String(name || '').trim();
+  if (!n) return false;
+  if (NON_LIVER.test(n)) return false;
+  if (/^00[_\s]/.test(n)) return false;
+  return true;
+}
+
 function liverKey(name) {
   return String(name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
@@ -1403,6 +1418,9 @@ const rgbCss = (c) => `rgb(${c[0]} ${c[1]} ${c[2]})`;
 
 /** 공식 컬러 → 아바타 배경(옅게)·글자(진하게) */
 function liverTone(name) {
+  if (!isLiverName(liverKey(name))) {
+    return 'background:#eef0f4;color:#5b6270';
+  }
   const hex = LIVER_COLORS[liverKey(name)];
   if (hex) {
     const c = hexToRgb(hex);
