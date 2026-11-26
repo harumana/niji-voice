@@ -936,6 +936,33 @@ function paintSeries(key) {
   }
 }
 
+function collectLivers() {
+  const map = new Map();
+  for (const f of visibleFiles()) {
+    const liver = f.liver || '기타';
+    map.set(liver, (map.get(liver) || 0) + 1);
+  }
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true }));
+}
+
+function currentLiver(livers) {
+  const wanted = state.collectionLiver || personal.lastLiver || '';
+  if (wanted && livers.some(([l]) => l === wanted)) return wanted;
+  return livers.length ? livers[0][0] : '';
+}
+
+function liverInitial(name) {
+  const m = String(name || '').match(/[\uAC00-\uD7A3A-Za-z\u3041-\u3096\u30A1-\u30F6\u4E00-\u9FAF0-9]/);
+  return m ? m[0] : '\u266A';
+}
+
+function liverTone(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  return `background:hsl(${hue} 55% 95%);color:hsl(${hue} 42% 40%)`;
+}
+
 function seriesTileHTML(group) {
   const coverFile = group.files.find((f) => coverInfoFor(f)) || group.files[0];
   const cov = coverInfoFor(coverFile);
