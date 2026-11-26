@@ -2132,7 +2132,9 @@ function initPlayer() {
 function playFile(file, { list = null, startAt = 0 } = {}) {
   if (!file) return;
   player.unlock();
-  const queue = list && list.length ? list : visibleFiles().length ? visibleFiles() : [file];
+  // 한 트랙을 고른 건 그 트랙만 듣겠다는 뜻이다 — 목록 전체를 대기열에 넣지 않는다.
+  // 여러 개를 이어 듣는 건 '전체 재생'·시리즈 재생·재생목록처럼 명시한 경우뿐.
+  const queue = list && list.length ? list : [file];
   let idx = queue.findIndex((f) => f.id === file.id);
   if (idx < 0) { queue.unshift(file); idx = 0; }
   personal.lastFileId = file.id;
@@ -3984,9 +3986,7 @@ async function onListClick(e) {
   if (act === 'theme-track') {
     const f = fileById(action.dataset.id);
     if (!f) return;
-    const list = state.files.filter((x) => themeOf(x).includes(state.openTheme || ''));
-    const at = Math.max(0, list.findIndex((x) => x.id === f.id));
-    player.playFiles(list, at);
+    playFile(f);          // 고른 트랙 하나만 재생한다
     return;
   }
   if (act === 'theme-play') {
