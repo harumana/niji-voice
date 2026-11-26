@@ -3275,8 +3275,11 @@ function updateNowLyric(time) {
   if (idx >= 0) {
     const el = lines[idx];
     const box = host;
-    const top = el.offsetTop - box.clientHeight / 2 + el.clientHeight / 2;
-    box.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    // offsetTop은 부모 기준이 달라질 수 있다 — 화면 좌표로 계산해 항상 가운데에 둔다
+    const boxRect = box.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const delta = (elRect.top - boxRect.top) - (box.clientHeight - elRect.height) / 2;
+    box.scrollTo({ top: Math.max(0, box.scrollTop + delta), behavior: 'smooth' });
   }
 }
 
