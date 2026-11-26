@@ -3487,6 +3487,13 @@ function onSelAction(e) {
     return;
   }
   if (!ids.length) return;
+  if (act === 'offline') {
+    offlineMany(ids.map(fileById).filter(Boolean));
+    state.selectMode = false;
+    state.selected.clear();
+    renderControlbar(); renderSelectionBar();
+    return;
+  }
   if (act === 'tag') { openTagSheet(ids); return; }
   if (act === 'fav') {
     const allFav = ids.every(isFav);
