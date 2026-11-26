@@ -16,7 +16,7 @@
 <meta name="format-detection" content="telephone=no" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'" />
-<link rel="stylesheet" href="css/app.css?v=12" />
+<link rel="stylesheet" href="css/app.css?v=13" />
 </head>
 <body>
 
@@ -93,19 +93,15 @@
     </nav>
 
     <section class="filters" id="filters" aria-label="필터">
-      <div class="frow" data-f="year">
-        <button class="fchip" type="button" data-open="year">연도<svg class="caret"><use href="#i-chevron"/></svg><span class="fcount" hidden></span></button>
-        <div class="fpanel" id="fpYear"></div>
+      <div class="frow-scroll">
+        <button class="fchip" type="button" data-open="year">연도<svg class="caret"><use href="#i-chevd"/></svg><span class="fcount" hidden></span></button>
+        <button class="fchip" type="button" data-open="liver">라이버<svg class="caret"><use href="#i-chevd"/></svg><span class="fcount" hidden></span></button>
+        <button class="fchip" type="button" data-open="tag">태그<svg class="caret"><use href="#i-chevd"/></svg><span class="fcount" hidden></span></button>
+        <button class="fclear" id="btnClearFilters" type="button" hidden>초기화 ✕</button>
       </div>
-      <div class="frow" data-f="liver">
-        <button class="fchip" type="button" data-open="liver">라이버<svg class="caret"><use href="#i-chevron"/></svg><span class="fcount" hidden></span></button>
-        <div class="fpanel" id="fpLiver"></div>
-      </div>
-      <div class="frow" data-f="tag">
-        <button class="fchip" type="button" data-open="tag">태그<svg class="caret"><use href="#i-chevron"/></svg><span class="fcount" hidden></span></button>
-        <div class="fpanel" id="fpTag"></div>
-      </div>
-      <button class="fclear" id="btnClearFilters" type="button" hidden>필터 초기화 ✕</button>
+      <div class="fpane" id="fpYear"></div>
+      <div class="fpane" id="fpLiver"></div>
+      <div class="fpane" id="fpTag"></div>
     </section>
 
     <div class="controlbar">
@@ -190,6 +186,6 @@
     }
   }, 6000);
 </script>
-<script type="module" src="js/app.js?v=14"></script>
+<script type="module" src="js/app.js?v=15"></script>
 </body>
 </html>
