@@ -980,6 +980,7 @@ function renderList() {
 
 function renderListInner() {
   rebuildTrackNos(state.files);
+  const ax = $('#axisSlot'); if (ax) ax.innerHTML = '';
   const area = $('#listArea');
   const foot = $('#listFoot');
   foot.innerHTML = '';
@@ -1535,8 +1536,8 @@ function renderThemeDetail(tag) {
 function renderThemeIndex() {
   const area = $('#listArea');
   const themes = themeIndex();
-  area.innerHTML = `<div class="libbar">${axisBar()}</div>`
-    + (themes.length
+  $('#axisSlot').innerHTML = axisBar();
+  area.innerHTML = (themes.length
       ? `<div class="col-grid">${themes.map(([tag, files]) => themeTileHTML(tag, files)).join('')}</div>`
       : emptyHTML({ icon: '🏷', title: '아직 테마가 없어요', desc: '보이스 메타데이터를 읽는 중이에요. 잠시 뒤 다시 열어 주세요.' }));
   $('#listFoot').textContent = '';
@@ -1555,8 +1556,8 @@ function renderCollection() {
   }
   const all = state.files;
   if (!all.length) {
-    area.innerHTML = `<div class="libbar">${axisBar()}</div>`
-      + emptyHTML({ icon: '📂', title: '아직 보이스가 없어요', desc: '드라이브를 연결하면 라이버·연도별로 모아 보여드려요.' });
+    $('#axisSlot').innerHTML = axisBar();
+    area.innerHTML = emptyHTML({ icon: '📂', title: '아직 보이스가 없어요', desc: '드라이브를 연결하면 라이버·연도별로 모아 보여드려요.' });
     return;
   }
 
@@ -1574,7 +1575,7 @@ function renderCollection() {
     ? `<div class="lib-head">
         <button type="button" class="lib-avatar" style="${liverTone(livers[0][0])}" data-act="pick-liver" aria-label="라이버 변경">${esc(liverInitial(livers[0][0]))}</button>
         <button type="button" class="lib-meta" data-act="pick-liver">
-          <span class="lib-name">${esc(livers[0][0])}</span>
+          <span class="lib-name" title="${esc(livers[0][0])}">${esc(liverShort(livers[0][0]))}</span>
           <span class="lib-sub">시리즈 ${flat.length} · 보이스 ${totalFiles}</span>
         </button>
         <button type="button" class="lib-fav ${isFavLiver(livers[0][0]) ? 'is-on' : ''}" data-act="fav-liver" data-liver="${esc(livers[0][0])}" aria-label="이 라이버 즐겨찾기"><svg><use href="${isFavLiver(livers[0][0]) ? '#i-star-fill' : '#i-star'}"/></svg></button>
@@ -1604,8 +1605,8 @@ function renderCollection() {
   const favBlock = favHere.length ? `<div class="col-year">즐겨찾기 보이스<span>${favHere.length}</span></div>
     <div class="fav-tracks">${favHere.map((f) => cardHTML(f)).join('')}</div>` : '';
 
-  area.innerHTML = `<div class="libbar">${axisBar()}</div>`
-    + favLiverStrip(cur) + head + favBlock + sections;
+  $('#axisSlot').innerHTML = axisBar();
+  area.innerHTML = favLiverStrip(cur) + head + favBlock + sections;
   $('#listFoot').textContent = '';
   prefetchSeriesCovers(flat);
   queueVisibleCovers();

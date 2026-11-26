@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'" />
-<link rel="stylesheet" href="css/app.css?v=48" />
+<link rel="stylesheet" href="css/app.css?v=49" />
 </head>
 <body>
 
@@ -99,6 +99,7 @@
     </nav>
 
     <div class="controlbar">
+      <div class="cbar-axis" id="axisSlot"></div>
       <div class="cbar-tools">
         <button class="tool" id="btnSort" type="button" aria-label="정렬"><svg><use href="#i-sort"/></svg></button>
         <button class="tool" id="btnFilterToggle" type="button" aria-label="필터">
@@ -107,7 +108,7 @@
         <button class="tool" id="btnOffline" type="button" aria-label="오프라인"><svg><use href="#i-download"/></svg></button>
         <button class="tool" id="btnShuffleAll" type="button" aria-label="셔플"><svg><use href="#i-shuffle"/></svg></button>
       </div>
-      <button class="btn-playall" id="btnPlayAll" type="button">
+      <button class="btn-playall" id="btnPlayAll" type="button" aria-label="전체 재생" title="전체 재생">
         <svg><use href="#i-play"/></svg><span>전체 재생</span>
       </button>
     </div>
@@ -182,6 +183,6 @@
     }
   }, 6000);
 </script>
-<script type="module" src="js/app.js?v=74"></script>
+<script type="module" src="js/app.js?v=75"></script>
 </body>
 </html>
