@@ -58,6 +58,73 @@ function saveJSON(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+/* ── offline-first cache (instant start) ── */
+const treeCacheKey = (rootId) => `niji.tree.${rootId || 'default'}`;
+const metaCacheKey = (rootId) => `niji.meta.${rootId || 'default'}`;
+
+function saveTreeCache(tree) {
+  if (!tree?.root?.id) return;
+  try {
+    localStorage.setItem(treeCacheKey(settings.rootId || tree.root.id), JSON.stringify({
+      savedAt: Date.now(),
+      root: tree.root,
+      folders: tree.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId, driveId: f.driveId || null })),
+      files: tree.files.map((f) => ({
+        id: f.id, name: f.name, size: f.size || 0,
+        createdTime: f.createdTime, modifiedTime: f.modifiedTime,
+        parentId: f.parentId, driveId: f.driveId || null,
+      })),
+    }));
+  } catch {}
+}
+
+function loadTreeCache(rootId) {
+  const want = rootId || settings.rootId;
+  try {
+    if (want) {
+      const raw = localStorage.getItem(treeCacheKey(want));
+      const data = raw ? JSON.parse(raw) : null;
+      return data?.root?.id && Array.isArray(data.files) ? data : null;
+    }
+    const best = newestCache('niji.tree.');
+    return best?.root?.id && Array.isArray(best.files) ? best : null;
+  } catch { return null; }
+}
+
+function saveMetaCache(data) {
+  if (!data) return;
+  try {
+    localStorage.setItem(metaCacheKey(settings.rootId), JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {}
+}
+
+function loadMetaCache(rootId) {
+  const want = rootId || settings.rootId;
+  try {
+    if (want) {
+      const raw = localStorage.getItem(metaCacheKey(want));
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed?.data ? parsed : null;
+    }
+    return newestCache('niji.meta.');
+  } catch { return null; }
+}
+
+function newestCache(prefix) {
+  let best = null;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(prefix)) continue;
+      let value = null;
+      try { value = JSON.parse(localStorage.getItem(key)); } catch { continue; }
+      if (!value) continue;
+      if (!best || (value.savedAt || 0) > (best.savedAt || 0)) best = value;
+    }
+  } catch {}
+  return best;
+}
+
 function debounce(fn, ms) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
@@ -93,6 +160,9 @@ const state = {
   indexRunning: false,
   indexCancel: false,
   liveError: '',
+  fromCache: false,
+  cachedAt: 0,
+  syncing: false,
 };
 
 const drive = new Drive();
@@ -198,13 +268,12 @@ function useDemo() {
   renderAll();
 }
 
-async function loadLive({ interactive = false } = {}) {
+async function loadLive({ interactive = false, silent = false } = {}) {
   if (!settings.clientId) {
-    toast('먼저 설정에서 OAuth Client ID를 입력해 주세요.', { err: true });
+    if (!silent) toast('먼저 설정에서 OAuth Client ID를 입력해 주세요.', { err: true });
     return false;
   }
-  state.loading = true;
-  renderHeader();
+  if (!silent) { state.loading = true; renderHeader(); }
   try {
     drive.setClientId(settings.clientId);
     if (!drive.connected) {
@@ -231,32 +300,36 @@ async function loadLive({ interactive = false } = {}) {
 
     const tree = await drive.tree(settings.rootId, {
       skipFolder: skipFolderFilter,
-      onProgress: ({ done }) => { setConnText(`불러오는 중… (${done}개 폴더)`); },
+      onProgress: silent ? undefined : ({ done }) => { setConnText(`불러오는 중… (${done}개 폴더)`); },
     });
     const meta = new SharedMeta(drive, settings.rootId);
     meta.onError = (e) => toast(`공유 메모 저장 실패: ${e?.message || e}`, { err: true, ms: 4000 });
     await meta.load();
     shared = meta;
+    meta.onChange(() => saveMetaCache(meta.data));
     state.mode = 'live';
     state.liveError = '';
     enrich(tree);
+    saveTreeCache(tree);
+    saveMetaCache(meta.data);
     state.folderId = tree.root.id;
     for (const f of DEMO_TREE.files) parsedCache.delete(f.id);
     await refreshOfflineIds();
     await primeCache();
     renderAll();
-    toast(`${state.files.length}개 파일을 불러왔어요`);
+    lastMetaRefresh = Date.now();
+    if (!silent) toast(`${state.files.length}개 파일을 불러왔어요`);
     return true;
   } catch (e) {
     state.mode = state.files.length ? state.mode : 'demo';
     if (e instanceof NeedsAuth) {
       state.liveError = 'auth';
       if (interactive) showConnectError(e);
-      else toast('Google 계정 연결이 필요해요.', { err: true });
+      else if (!silent) toast('Google 계정 연결이 필요해요.', { err: true });
     } else {
       state.liveError = e.message || 'Drive를 불러오지 못했어요.';
       if (interactive) showConnectError(e);
-      else toast(state.liveError, { err: true });
+      else if (!silent) toast(state.liveError, { err: true });
     }
     renderHeader();
     return false;
@@ -264,6 +337,66 @@ async function loadLive({ interactive = false } = {}) {
     state.loading = false;
     renderHeader();
   }
+}
+
+/** Paint the last saved library before any network talk. */
+function startFromCache(cached) {
+  state.mode = 'live';
+  state.liveError = '';
+  state.fromCache = true;
+  state.cachedAt = cached.savedAt || 0;
+  const rootId = settings.rootId || cached.root?.id || '';
+  if (!settings.rootId && cached.root?.id) {
+    settings.rootId = cached.root.id;
+    saveJSON(SETTINGS_KEY, settings);
+  }
+  const meta = new SharedMeta(drive, rootId);
+  const cachedMeta = loadMetaCache(rootId);
+  if (cachedMeta?.data) {
+    meta.data = cachedMeta.data;
+    meta.updatedAt = cachedMeta.savedAt || '';
+  }
+  meta.onError = (e) => toast(`공유 메모 저장 실패: ${e?.message || e}`, { err: true, ms: 4000 });
+  meta.onChange(() => saveMetaCache(meta.data));
+  shared = meta;
+  enrich({ root: cached.root, folders: cached.folders || [], files: cached.files || [] });
+  state.folderId = cached.root.id;
+  renderAll();
+}
+
+/** Background sync: refresh list + shared meta without any loading UI. */
+async function syncQuietly() {
+  if (!settings.clientId || !settings.rootId) return;
+  if (!drive.connected) return;
+  if (state.syncing) return;
+  state.syncing = true;
+  const before = treeSignature();
+  try {
+    const tree = await drive.tree(settings.rootId, { skipFolder: skipFolderFilter });
+    if (shared?.load) await shared.load();
+    lastMetaRefresh = Date.now();
+    enrich(tree);
+    saveTreeCache(tree);
+    saveMetaCache(shared?.data);
+    state.fromCache = false;
+    state.cachedAt = Date.now();
+    if (before !== treeSignature()) renderAll();
+    else { renderTabs(); renderList(); }
+    renderHeader();
+  } catch (e) {
+    if (e instanceof NeedsAuth) state.liveError = 'auth';
+    renderHeader();
+  } finally {
+    state.syncing = false;
+  }
+}
+
+function treeSignature() {
+  const s = state.folders.map((f) => `${f.id}:${f.name}`).join(',') + '#'
+    + state.files.map((f) => `${f.id}:${f.name}:${f.modifiedTime || ''}:${f.parentId}`).join(',');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return `${s.length}:${h}`;
 }
 
 /** Skip the untagged original-backup folder unless the user turns it back on. */
@@ -324,21 +457,34 @@ function totalNewNotes() {
 
 /* ─────────────────────────── rendering: chrome ─────────────────────────── */
 function renderHeader() {
-  $('#nickLabel').textContent = personal.nickname || '게스트';
+  const nickEl = $('#nickLabel');
+  if (nickEl) nickEl.textContent = personal.nickname || '게스트';
   const conn = $('#connState');
+  if (!conn) return;
   conn.className = 'conn';
   if (state.loading) {
     conn.textContent = '불러오는 중…';
+    conn.title = 'Google Drive에서 목록을 불러오는 중';
   } else if (state.mode === 'live') {
-    conn.classList.add('is-live');
-    conn.textContent = drive.connected ? 'Google Drive 연결됨' : '연결 확인 필요';
+    if (drive.connected) {
+      conn.classList.add('is-live');
+      conn.textContent = 'Google Drive 연결됨';
+      conn.title = 'Google Drive 연결됨';
+    } else {
+      conn.classList.add('is-off');
+      conn.textContent = '저장된 목록';
+      conn.title = '저장해 둔 목록을 보는 중 — 눌러서 Google Drive에 연결';
+    }
   } else if (settings.clientId) {
     conn.classList.add('is-off');
-    conn.textContent = '데모 모드 · 다시 연결';
+    conn.textContent = '데모 모드 · 연결';
+    conn.title = '데모 모드 — 눌러서 Google Drive에 연결';
   } else {
-    conn.textContent = '데모 모드 · 설정에서 연결';
+    conn.textContent = '데모 모드';
+    conn.title = '데모 모드 — 설정에서 Google Drive를 연결하세요';
   }
-  $('#btnRefresh').classList.toggle('is-busy', state.loading);
+  const rb = $('#btnRefresh');
+  if (rb) rb.classList.toggle('is-busy', state.loading);
 }
 
 function renderTabs() {
@@ -989,15 +1135,21 @@ function closeSheet() {
 /* settings */
 function openSettings() {
   ui.sheet = 'settings';
-  const connected = state.mode === 'live';
+  const isLive = state.mode === 'live';
+  const online = drive.connected;
+  const stateText = isLive
+    ? (online ? 'Google Drive 연결됨' : '저장된 목록 표시 중 — 연결 필요')
+    : '데모 모드';
   const body = openSheet('설정', `
     <div class="field">
       <label>연결 상태</label>
       <div class="indexbar" style="margin:0">
-        <span style="flex:1 1 auto">${connected ? 'Google Drive 연결됨' : (settings.clientId ? '데모 모드 (연결 대기)' : '데모 모드')}</span>
-        <button class="mini ${connected ? '' : 'has-content'}" data-act="connect">${connected ? '다시 연결' : '연결하기'}</button>
+        <span style="flex:1 1 auto">${stateText}</span>
+        <button class="mini ${isLive && online ? '' : 'has-content'}" data-act="connect">${isLive && online ? '다시 연결' : '연결하기'}</button>
       </div>
-      <p class="hint">${connected ? `${esc(state.files.length)}개 파일 · ${esc(state.folders.length)}개 폴더` : '연결하면 실제 드라이브의 NIJI VOICE 폴더를 불러옵니다.'}</p>
+      <p class="hint">${isLive
+        ? `${esc(state.files.length)}개 파일 · ${esc(state.folders.length)}개 폴더${state.cachedAt ? ` · ${esc(fmtDate(new Date(state.cachedAt).toISOString()))} 기준` : ''}`
+        : '연결하면 실제 드라이브의 NIJI VOICE 폴더를 불러옵니다.'}</p>
     </div>
 
     <div class="field">
@@ -1084,6 +1236,10 @@ function openSettings() {
     if (act === 'disconnect') {
       drive.signOut();
       state.mode = 'demo';
+      try {
+        localStorage.removeItem(treeCacheKey(settings.rootId));
+        localStorage.removeItem(metaCacheKey(settings.rootId));
+      } catch {}
       parsedCache.clear();
       cachedEmpty.clear();
       useDemo();
@@ -1966,15 +2122,22 @@ function bindEvents() {
 
   $('#btnRefresh').addEventListener('click', async () => {
     if (state.loading) return;
-    if (state.mode === 'demo' && !settings.clientId) { toast('데모 모드예요. 설정에서 연결하면 실제 드라이브를 불러와요.'); return; }
+    if (!settings.clientId) { toast('데모 모드예요. 설정에서 Google Drive를 연결해 주세요.'); return; }
+    if (!drive.connected || state.mode === 'demo') { await loadLive({ interactive: true }); return; }
     await refresh(true);
   });
 
   $('#btnSettings').addEventListener('click', openSettings);
   $('#btnNick').addEventListener('click', openNickname);
-  $('#connState').addEventListener('click', openSettings);
+  $('#connState').addEventListener('click', () => {
+    if (settings.clientId && !drive.connected) loadLive({ interactive: true }).catch(() => {});
+    else openSettings();
+  });
   $('#connState').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettings(); }
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    if (settings.clientId && !drive.connected) loadLive({ interactive: true }).catch(() => {});
+    else openSettings();
   });
 
   $('#btnSelectMode').addEventListener('click', () => {
@@ -2040,7 +2203,7 @@ function bindEvents() {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    if (state.mode === 'live' && shared?.modifiedTime && Date.now() - lastMetaRefresh > 120000) {
+    if (state.mode === 'live' && drive.connected && shared?.modifiedTime && Date.now() - lastMetaRefresh > 120000) {
       refreshMetaOnly();
     }
   });
@@ -2055,9 +2218,11 @@ function bindEvents() {
 
 let lastMetaRefresh = 0;
 async function refreshMetaOnly() {
+  if (!drive.connected) return;
   try {
     await shared.load();
     lastMetaRefresh = Date.now();
+    saveMetaCache(shared?.data);
     renderList();
     renderTabs();
   } catch {}
@@ -2078,6 +2243,9 @@ async function refresh(manual = false) {
     await shared.load();
     lastMetaRefresh = Date.now();
     enrich(tree);
+    saveTreeCache(tree);
+    saveMetaCache(shared?.data);
+    state.fromCache = false;
     await refreshOfflineIds();
     await primeCache();
     renderAll();
@@ -2244,17 +2412,37 @@ function onSelAction(e) {
 /* ─────────────────────────── boot ─────────────────────────── */
 async function boot() {
   renderHeader();
-  await refreshOfflineIds();
-  useDemo();
+
+  // a token held from this session lets us refresh without any popup
+  if (settings.clientId) {
+    try { drive.restore(); } catch {}
+  }
+
+  // 1) paint the last saved library first — no spinner, no demo flash
+  const cached = loadTreeCache();
+  const fromCache = !!(cached && cached.files?.length);
+  if (fromCache) startFromCache(cached);
+  else useDemo();
+
   bindEvents();
   initPlayer();
   restoreLast();
 
+  // 2) offline markers and cached ID3 come from IndexedDB; repaint once known
+  Promise.all([refreshOfflineIds(), primeCache()])
+    .then(() => { if (fromCache) renderList(); })
+    .catch(() => {});
+
+  // 3) only a token we already hold may talk to Drive on its own.
+  //    Anything else waits for the user's tap, so no login popup on launch.
   if (settings.clientId) {
-    // warm up Google Identity Services so the connect tap can open the popup synchronously
     drive.loadGis().then(() => drive.client()).catch(() => {});
-    drive.restore();
-    loadLive({ interactive: false }).catch(() => {});
+    if (drive.connected) {
+      if (fromCache) syncQuietly();
+      else loadLive({ interactive: false, silent: true }).catch(() => {});
+    } else {
+      renderHeader();
+    }
   }
 
   if ('serviceWorker' in navigator) {
@@ -2271,11 +2459,15 @@ function restoreLast() {
   const f = fileById(id);
   if (!f) return;
   player.current = f;
-  $('#pTitle').textContent = displayName(f.name);
-  $('#pSub').textContent = [f.liver, f.year].filter(Boolean).join(' · ');
-  loadParsed(f).then((p) => {
-    if (p?.coverUrl) $('#pThumb').innerHTML = `<img src="${p.coverUrl}" alt="" />`;
-    if (p?.title) $('#pTitle').textContent = p.title;
+  const t = $('#pTitle');
+  if (t) t.textContent = displayName(f.name);
+  const s = $('#pSub');
+  if (s) s.textContent = [f.liver, f.year].filter(Boolean).join(' · ');
+  loadParsed(f, { network: drive.connected }).then((p) => {
+    const th = $('#pThumb');
+    if (p?.coverUrl && th) th.innerHTML = `<img src="${p.coverUrl}" alt="" />`;
+    const tt = $('#pTitle');
+    if (p?.title && tt) tt.textContent = p.title;
   }).catch(() => {});
 }
 
