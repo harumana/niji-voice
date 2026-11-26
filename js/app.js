@@ -1578,14 +1578,14 @@ function renderCollection() {
           <span class="lib-sub">시리즈 ${flat.length} · 보이스 ${totalFiles}</span>
         </button>
         <button type="button" class="lib-fav ${isFavLiver(livers[0][0]) ? 'is-on' : ''}" data-act="fav-liver" data-liver="${esc(livers[0][0])}" aria-label="이 라이버 즐겨찾기"><svg><use href="${isFavLiver(livers[0][0]) ? '#i-star-fill' : '#i-star'}"/></svg></button>
-        <button type="button" class="lib-go" data-act="pick-liver" aria-label="라이버 변경"><svg><use href="#i-chevron"/></svg></button>
+        <button type="button" class="lib-change" data-act="pick-liver">라이버 변경<svg><use href="#i-chevron"/></svg></button>
       </div>`
     : `<div class="lib-head">
         <button type="button" class="lib-meta" data-act="pick-liver">
           <span class="lib-name">라이버 ${livers.length}명</span>
           <span class="lib-sub">시리즈 ${flat.length} · 보이스 ${totalFiles}</span>
         </button>
-        <button type="button" class="lib-go" data-act="pick-liver" aria-label="라이버 변경"><svg><use href="#i-chevron"/></svg></button>
+        <button type="button" class="lib-change" data-act="pick-liver">라이버 변경<svg><use href="#i-chevron"/></svg></button>
       </div>`;
 
   const sections = livers.map(([liver]) => {
