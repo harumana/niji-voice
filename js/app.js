@@ -64,7 +64,9 @@ function debounce(fn, ms) {
 }
 
 /* ─────────────────────────── state ─────────────────────────── */
-const settings = Object.assign({ clientId: '', rootId: '' }, loadJSON(SETTINGS_KEY, {}));
+const DEFAULT_CLIENT_ID = '933433222359-8deoeh6c8mva4sbl9bv90gunkbe600lo.apps.googleusercontent.com';
+const settings = Object.assign({ clientId: DEFAULT_CLIENT_ID, rootId: '' }, loadJSON(SETTINGS_KEY, {}));
+if (!settings.clientId) settings.clientId = DEFAULT_CLIENT_ID;
 const personal = Object.assign(
   { nickname: '게스트', favorites: {}, playlists: [], notesSeenAt: 0, lastFileId: null },
   loadJSON(PERSONAL_KEY, {})
