@@ -1211,26 +1211,34 @@ function queueCover(fileId) {
 const coverBlobs = new Map();       // drive image id -> object url
 const coverBlobPending = new Map(); // drive image id -> promise
 
-async function folderCoverInfo(file) {
-  let id = file?.folderCoverId || (file?.parentId ? coverMap().get(file.parentId) : null);
-  if (!id && file?.parentId && coverMiss().has(file.parentId)) return null;
-  if (!id && file?.parentId) {
-    // 처음 보는 폴더만 조회한다 — 찾은 id는 저장해 두고 다음부터는 조회하지 않는다
+/**
+ * 커버 그림은 트랙과 같은 폴더에 있기도 하고, 한 단계 위 시리즈 폴더에 있기도 하다.
+ * 가까운 폴더부터 위로 올라가며 처음 만나는 이미지를 쓴다. (루트 폴더는 건너뛴다)
+ */
+async function coverImageFor(file) {
+  const rootId = state.rootId || settings.rootId || '';
+  let fid = file?.parentId || '';
+  let guard = 0;
+  while (fid && fid !== rootId && guard++ < 6) {
+    const known = coverMap().get(fid);
+    if (known) return known;
+    if (coverMiss().has(fid)) { fid = state.folderMap?.get(fid)?.parentId || ''; continue; }
     let img = null;
     let asked = false;
     try {
-      img = await drive.folderImage(file.parentId);
+      img = await drive.folderImage(fid);
       asked = true;                        // 조회 자체는 성공했다
     } catch {}
-    if (img) {
-      id = img.id;
-      file.folderCoverId = img.id;
-      rememberFolderCover(file.parentId, img.id);
-    } else if (asked) {
-      // 폴더에 이미지가 없다 — 다음부터는 묻지 않는다 (오류였을 때는 기억하지 않는다)
-      rememberFolderMiss(file.parentId);
-    }
+    if (img?.id) { rememberFolderCover(fid, img.id); return img.id; }
+    if (asked) rememberFolderMiss(fid);   // 정말 이미지가 없는 폴더만 기억한다
+    fid = state.folderMap?.get(fid)?.parentId || '';
   }
+  return null;
+}
+
+async function folderCoverInfo(file) {
+  let id = file?.folderCoverId || (file?.parentId ? coverMap().get(file.parentId) : null);
+  if (!id) id = await coverImageFor(file);
   if (id && file) file.folderCoverId = id;
   if (!id) return null;
   if (coverBlobs.has(id)) return { thumb: coverBlobs.get(id), full: coverBlobs.get(id) };
