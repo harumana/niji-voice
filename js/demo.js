@@ -65,13 +65,13 @@ function track(o) {
 
 export const DEMO_FILES = [
   track({
-    id: 'demo-1', name: '01_Kaeda Haru_2026_Birthday_Voice.mp3', size: 5_812_000,
+    id: 'demo-1', name: '01_Kaida Haru_2026_Birthday_Voice.mp3', size: 5_812_000,
     createdTime: '2026-11-19T03:20:00.000Z', parentId: 'f-haru-2026',
     title: '01_誕生日ボイス_甲斐田晴', artist: '甲斐田晴', album: '2026 誕生日ボイス', year: '2026',
     lrc: LRC_HARU, cover: ['#6d5efc', '#c4b5fd', 'HARU'], seed: 3, duration: 33,
   }),
   track({
-    id: 'demo-2', name: '02_Kaeda Haru_2026_Birthday_Voice_Ex.mp3', size: 2_431_000,
+    id: 'demo-2', name: '02_Kaida Haru_2026_Birthday_Voice_Ex.mp3', size: 2_431_000,
     createdTime: '2026-11-19T03:21:00.000Z', parentId: 'f-haru-2026',
     title: '02_誕生日ボイス_甲斐田晴(EX)', artist: '甲斐田晴', album: '2026 誕生日ボイス', year: '2026',
     lrc: LRC_HARU, cover: ['#3b82f6', '#93c5fd', 'HARU EX'], seed: 5, duration: 29,
