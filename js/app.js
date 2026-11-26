@@ -1441,8 +1441,8 @@ function openSeriesSheet() {
     if (!b) return;
     const act = b.dataset.act;
     const ids = files.map((f) => f.id);
-    if (act === 's-play') { closeSheet(); player.playFiles(files, 0); toast(`${files.length}개 재생 시작`); }
-    if (act === 's-offline') { closeSheet(); offlineMany(files); }
+    if (act === 's-play') { closeAllSheets(); player.playFiles(files, 0); toast(`${files.length}개 재생 시작`); }
+    if (act === 's-offline') { closeAllSheets(); offlineMany(files); }
     if (act === 's-tag') { openTagSheet(ids); }
     if (act === 's-pl') { openPlaylistPicker(ids); }
   });
@@ -1902,22 +1902,37 @@ function syncCardStates() {
 }
 
 /* ─────────────────────────── sheets ─────────────────────────── */
-const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics', panelKey: '' };
+const ui = { sheet: null, lyricIdx: -1, sheetFile: null, seg: 'lyrics', panelKey: '', stack: [] };
 
 function openSheet(title, html, { tall = false, full = false } = {}) {
-  $('#sheetTitle').textContent = title;
-  // replace the body node so listeners from the previous sheet are dropped
+  const sheetEl = $('#sheet');
+  const overlay = $('#overlay');
   const old = $('#sheetBody');
+  // 시트가 이미 떠 있으면 지금 화면을 접어 두고 그 위에 겹쳐 연다 (닫으면 이전 화면으로 돌아간다)
+  if (!overlay.hidden && old) {
+    ui.stack.push({
+      body: old,
+      title: $('#sheetTitle').textContent,
+      sheet: ui.sheet,
+      full: sheetEl.classList.contains('is-full'),
+      tall: sheetEl.classList.contains('is-tall'),
+    });
+    old.remove();
+  }
+  $('#sheetTitle').textContent = title;
   const body = document.createElement('div');
   body.className = 'sheet-body';
   body.id = 'sheetBody';
-  old.replaceWith(body);
   body.innerHTML = html;
-  $('#sheet').classList.toggle('is-tall', tall && !full);
-  $('#sheet').classList.toggle('is-full', !!full);
+  sheetEl.appendChild(body);
+  sheetEl.classList.toggle('is-tall', tall && !full);
+  sheetEl.classList.toggle('is-full', !!full);
   const closeUse = $('#sheetClose')?.querySelector('use');
   if (closeUse) closeUse.setAttribute('href', full ? '#i-chevd' : '#i-close');
-  $('#overlay').hidden = false;
+  sheetEl.style.transform = '';
+  sheetEl.style.transition = '';
+  overlay.style.opacity = '';
+  overlay.hidden = false;
   body.scrollTop = 0;
   document.body.style.overflow = 'hidden';
   document.body.classList.add('sheet-open');
@@ -1925,8 +1940,30 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
   return body;
 }
 
+function refreshNowSheet() {
+  if (!player?.current) return;
+  updateNowSheet({
+    current: player.current,
+    isPlaying: player.isPlaying,
+    currentTime: player.audio.currentTime || 0,
+    duration: Number.isFinite(player.audio.duration) ? player.audio.duration : 0,
+    ab: { ...player.ab },
+    sleep: { ...player.sleep },
+    shuffle: player.shuffle,
+  });
+}
+
+function closeAllSheets() {
+  ui.stack = [];
+  closeSheet();
+}
+
 /** 위에서 아래로 쓸어내리면 시트가 내려가며 닫힌다 (미니 플레이어로 복귀) */
+let sheetSwipeBound = [];
 function bindSheetSwipe(enabled) {
+  for (const [el, type, fn] of sheetSwipeBound) el.removeEventListener(type, fn);
+  sheetSwipeBound = [];
+  const on = (el, type, fn) => { el.addEventListener(type, fn); sheetSwipeBound.push([el, type, fn]); };
   const sheet = $('#sheet');
   const grab = sheet.querySelector('.sheet-grab');
   const head = sheet.querySelector('.sheet-head');
@@ -1964,39 +2001,60 @@ function bindSheetSwipe(enabled) {
     }
   };
   for (const el of [grab, head]) {
-    el.addEventListener('pointerdown', (e) => {
+    on(el, 'pointerdown', (e) => {
       if (e.target.closest('button.sheet-x')) return;
       start(e);
       el.setPointerCapture?.(e.pointerId);
       e.preventDefault();
     });
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
+    on(el, 'pointermove', move);
+    on(el, 'pointerup', end);
+    on(el, 'pointercancel', end);
   }
 
   // 앨범 커버 쪽에서도 아래로 쓸면 닫힌다 (탭은 그대로 커버 크게 보기)
   const art = sheet.querySelector('.np-art-wrap');
   if (!art) return;
-  art.addEventListener('pointerdown', (e) => {
+  on(art, 'pointerdown', (e) => {
     start(e);
     art.setPointerCapture?.(e.pointerId);
-  }, { passive: true });
-  art.addEventListener('pointermove', move, { passive: true });
-  art.addEventListener('pointerup', () => {
+  });
+  on(art, 'pointermove', move);
+  on(art, 'pointerup', () => {
     if (active && dy > 12) {
       art.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
     }
     end();
   });
-  art.addEventListener('pointercancel', end);
+  on(art, 'pointercancel', end);
 }
 
 function closeSheet() {
-  $('#overlay').hidden = true;
+  const sheetEl = $('#sheet');
+  const overlay = $('#overlay');
+  const cur = $('#sheetBody');
+  const prev = ui.stack.pop();
+  if (prev) {
+    cur?.remove();
+    sheetEl.appendChild(prev.body);
+    $('#sheetTitle').textContent = prev.title;
+    sheetEl.classList.toggle('is-full', prev.full);
+    sheetEl.classList.toggle('is-tall', prev.tall);
+    sheetEl.style.transform = '';
+    sheetEl.style.transition = '';
+    overlay.style.opacity = '';
+    ui.sheet = prev.sheet;
+    bindSheetSwipe(prev.full);
+    if (prev.sheet === 'now' && player?.current) refreshNowSheet();
+    return;
+  }
+  overlay.hidden = true;
   ui.sheet = null;
   ui.sheetFile = null;
   ui.lyricIdx = -1;
+  sheetEl.style.transform = '';
+  sheetEl.style.transition = '';
+  overlay.style.opacity = '';
   document.body.style.overflow = '';
   document.body.classList.remove('sheet-open');
 }
@@ -2816,8 +2874,10 @@ function updateNowSheet(st) {
   }
   const p = currentParsed(cur);
   const eyebrow = p.album || cur.liver || '지금 재생 중';
-  const titleEl = $('#sheetTitle');
-  if (titleEl) titleEl.textContent = eyebrow;
+  if (ui.sheet === 'now') {
+    const titleEl = $('#sheetTitle');
+    if (titleEl) titleEl.textContent = eyebrow;
+  }
   const panelKey = `${cur.id}|${ui.seg}|${(p.lyrics || []).length}`;
   if ($('#npPanel') && ui.seg !== 'memo' && ui.panelKey !== panelKey) {
     renderNowPanel(cur, ui.seg);
@@ -3055,7 +3115,7 @@ function openMoreSheet(file, { playlist = false } = {}) {
       return;
     }
     if (act === 'm-play') {
-      closeSheet();
+      closeAllSheets();
       if (player.current?.id === file.id) player.toggle();
       else playFile(file);
     }
@@ -3067,7 +3127,7 @@ function removeFromPlaylist(fileId) {
   if (!pl) return;
   pl.fileIds = pl.fileIds.filter((id) => id !== fileId);
   saveJSON(PERSONAL_KEY, personal);
-  closeSheet();
+  closeAllSheets();
   renderList();
   toast('재생목록에서 뺐어요');
 }

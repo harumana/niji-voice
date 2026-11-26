@@ -1,5 +1,5 @@
 /* NIJI VOICE service worker — app shell offline, network-first updates */
-const CACHE = 'niji-voice-v49';
+const CACHE = 'niji-voice-v50';
 const SHELL = [
   './',
   './index.html',
