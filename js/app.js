@@ -1920,6 +1920,7 @@ function openSheet(title, html, { tall = false, full = false } = {}) {
   $('#overlay').hidden = false;
   body.scrollTop = 0;
   document.body.style.overflow = 'hidden';
+  document.body.classList.add('sheet-open');
   bindSheetSwipe(!!full);
   return body;
 }
@@ -1997,6 +1998,7 @@ function closeSheet() {
   ui.sheetFile = null;
   ui.lyricIdx = -1;
   document.body.style.overflow = '';
+  document.body.classList.remove('sheet-open');
 }
 
 /* settings */
