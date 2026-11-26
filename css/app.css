@@ -549,12 +549,20 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
 }
 @keyframes slideUp { from { transform: translateY(28px); } }
 
-.sheet-grab { width: 36px; height: 4px; border-radius: 999px; background: var(--fill); margin: 8px auto 0; flex: 0 0 auto; }
+.sheet-grab { width: 36px; height: 4px; border-radius: 999px; background: var(--fill); margin: 8px auto 0; flex: 0 0 auto;
+  touch-action: none; cursor: grab; }
+.sheet-grab::before { content: ''; position: absolute; }
+.sheet-grab { position: relative; }
+.sheet-grab::before { left: -40px; right: -40px; top: -14px; bottom: -10px; }
 .sheet-head {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 18px 8px;
   flex: 0 0 auto;
+  touch-action: pan-x;   /* 세로로 끌면 시트가 따라 내려오게 */
+  cursor: grab;
 }
+.sheet.is-dragging, .sheet.is-dragging .sheet-head { cursor: grabbing; }
+.sheet.is-dragging { will-change: transform; }
 .sheet-head h2 {
   margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.02em;
   flex: 1 1 auto; min-width: 0;
@@ -581,7 +589,7 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   background: rgba(17, 24, 39, .14);
   margin: 10px auto 6px;
 }
-.sheet.is-full .sheet-head { position: relative; justify-content: center; padding: 4px 18px 0; }
+.sheet.is-full .sheet-head { position: relative; justify-content: center; padding: 4px 18px 0; min-height: 42px; align-items: flex-start; }
 .sheet.is-full .sheet-head h2 {
   font-size: 12.5px; font-weight: 650; letter-spacing: -.005em;
   color: var(--text-2); text-align: center; flex: 0 1 auto;

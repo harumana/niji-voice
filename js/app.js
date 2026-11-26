@@ -2324,44 +2324,58 @@ function bindSheetSwipe(enabled) {
   sheet.style.transition = '';
   if (!enabled) return;
 
-  let startY = 0, startT = 0, dy = 0, active = false;
+  let startY = 0, dy = 0, active = false, pid = null, lastY = 0, lastT = 0, vy = 0;
   const start = (e) => {
     active = true;
-    startY = e.clientY;
-    startT = Date.now();
+    pid = e.pointerId;
+    startY = lastY = e.clientY;
+    lastT = Date.now();
+    vy = 0;
     dy = 0;
     sheet.style.transition = 'none';
+    sheet.classList.add('is-dragging');
   };
   const move = (e) => {
-    if (!active) return;
+    if (!active || (pid != null && e.pointerId !== pid)) return;
     dy = Math.max(0, e.clientY - startY);
-    sheet.style.transform = `translateY(${dy}px)`;
-    if (dy > 4) $('#overlay').style.opacity = String(Math.max(0.15, 1 - dy / 480));
+    const now = Date.now();
+    const dt = now - lastT;
+    if (dt > 0) { vy = (e.clientY - lastY) / dt; lastY = e.clientY; lastT = now; }
+    // 끌어내릴수록 살짝 무게가 붙어 부드럽게 따라온다
+    sheet.style.transform = `translate3d(0, ${dy}px, 0)`;
+    if (dy > 2) $('#overlay').style.opacity = String(Math.max(0.12, 1 - dy / (sheet.offsetHeight * 0.9)));
   };
-  const end = () => {
+  const end = (e) => {
     if (!active) return;
     active = false;
-    const quick = Date.now() - startT < 260 && dy > 40;
+    pid = null;
+    sheet.classList.remove('is-dragging');
     $('#overlay').style.opacity = '';
-    if (dy > 120 || quick) {
-      sheet.style.transition = 'transform .2s cubic-bezier(.3, .7, .3, 1)';
-      sheet.style.transform = 'translateY(110%)';
-      setTimeout(() => { closeSheet(); sheet.style.transform = ''; sheet.style.transition = ''; }, 190);
+    const h = sheet.offsetHeight || 600;
+    const flick = vy > 0.55 && dy > 24;   // 빠르게 튕기면 짧게 끌어도 닫힌다
+    if (dy > h * 0.22 || flick) {
+      const rest = Math.max(0, h - dy);
+      sheet.style.transition = `transform ${Math.min(320, 140 + rest * 0.28)}ms cubic-bezier(.32,.72,0,1)`;
+      sheet.style.transform = 'translate3d(0, 100%, 0)';
+      setTimeout(() => { closeSheet(); sheet.style.transform = ''; sheet.style.transition = ''; }, 220);
     } else {
-      sheet.style.transition = 'transform .22s cubic-bezier(.3, .8, .3, 1.2)';
+      // 손을 뗀 속도만큼 살짝 튕겨 제자리로
+      sheet.style.transition = 'transform .26s cubic-bezier(.22,.9,.32,1.08)';
       sheet.style.transform = '';
     }
   };
   for (const el of [grab, head]) {
     on(el, 'pointerdown', (e) => {
       if (e.target.closest('button.sheet-x')) return;
+      if (e.button != null && e.button !== 0) return;
+      try { el.setPointerCapture(e.pointerId); } catch {}
       start(e);
-      el.setPointerCapture?.(e.pointerId);
       e.preventDefault();
     });
     on(el, 'pointermove', move);
     on(el, 'pointerup', end);
     on(el, 'pointercancel', end);
+    on(el, 'lostpointercapture', end);
   }
 
   // 재생 화면에서는 커버를 끌어내려도 닫지 않는다 — 대신 커버가 줄어드는 데 한계를 둔다
@@ -3090,7 +3104,7 @@ function openNowPlaying() {
         <button type="button" class="np-pill ${player.ab.a != null ? 'is-on' : ''}" id="npAB" data-act="np-ab">A–B</button>
         <button type="button" class="np-pill" id="npRate" data-act="np-rate">${rateLabel(player.rate)}</button>
         <button type="button" class="np-pill ${player.sleep.mode ? 'is-on' : ''}" id="npSleep" data-act="np-sleep"><svg><use href="#i-moon"/></svg>취침</button>
-        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>이어 듣기</button>
+        <button type="button" class="np-pill" data-act="np-queue"><svg><use href="#i-list"/></svg>다음 재생</button>
         <button type="button" class="np-pill" data-act="np-more"><svg><use href="#i-more"/></svg>더보기</button>
       </div>
       <div class="np-optrow" id="npSleepOpt" hidden>
@@ -3364,7 +3378,7 @@ function openQueue() {
   ui.queueSel = ui.queueSel || new Set();
   ui.queueSel.clear();
   ui.queueSelect = false;
-  const body = openSheet('이어 듣기', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
+  const body = openSheet('다음 재생', '<div class="lrc-empty">불러오는 중…</div>', { tall: true });
 
   const dropAt = (indexes) => {
     if (!player || !indexes.length) return;
@@ -3373,7 +3387,7 @@ function openQueue() {
     render();
     refreshNowSheet();
     renderList();
-    if (!player.queue.length) toast('이어 듣기 목록이 비었어요 — 지금 곡은 계속 재생돼요');
+    if (!player.queue.length) toast('다음 재생 목록이 비었어요 — 지금 곡은 계속 재생돼요');
   };
 
   const bindSwipe = () => {
@@ -3419,14 +3433,14 @@ function openQueue() {
   const render = () => {
     const q = player?.queue || [];
     if (!q.length) {
-      $('#sheetTitle').textContent = '이어 듣기';
-      body.innerHTML = '<div class="lrc-empty">이어 듣기 목록이 비어 있어요.<br>시리즈나 라이버 전체 재생을 누르면 여기에 쌓여요.</div>';
+      $('#sheetTitle').textContent = '다음 재생';
+      body.innerHTML = '<div class="lrc-empty">다음 재생이 비어 있어요.<br>시리즈나 라이버 전체 재생을 누르면 여기에 쌓여요.</div>';
       return;
     }
     const sel = ui.queueSel;
     $('#sheetTitle').textContent = ui.queueSelect
-      ? `이어 듣기 · ${sel.size}개 선택`
-      : `이어 듣기 (${q.length})`;
+      ? `다음 재생 · ${sel.size}개 선택`
+      : `다음 재생 (${q.length})`;
     body.innerHTML = `
       <div class="q-head">
         <span class="q-count">${q.length}곡 · 왼쪽으로 밀면 빼요</span>
@@ -3443,7 +3457,7 @@ function openQueue() {
                 <span class="hit-file">${esc([f.liver, f.year].filter(Boolean).join(' · '))}</span>
               </span>
             </button>
-            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="이어 듣기에서 빼기"><svg><use href="#i-close"/></svg></button>`}
+            ${ui.queueSelect ? '' : `<button type="button" class="q-rm" data-qact="rm" data-i="${i}" aria-label="다음 재생에서 빼기"><svg><use href="#i-close"/></svg></button>`}
           </div>`).join('')}
       </div>
       ${ui.queueSelect ? `
