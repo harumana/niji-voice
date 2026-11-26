@@ -779,6 +779,8 @@ function openFilterSheet() {
 }
 
 function renderControlbar() {
+  const ft = $('#btnFilterToggle');
+  if (ft) ft.hidden = state.view === 'folders';
   const play = $('#btnPlayAll');
   if (play) play.querySelector('span').textContent = (state.view === 'folders' && state.folderMode === 'tree') ? '이 폴더 재생' : '전체 재생';
   const off = $('#btnOffline');
@@ -1073,7 +1075,7 @@ function paintSeries(key) {
 
 function collectLivers() {
   const map = new Map();
-  for (const f of visibleFiles()) {
+  for (const f of state.files) {
     const liver = f.liver || '기타';
     map.set(liver, (map.get(liver) || 0) + 1);
   }
@@ -1114,7 +1116,7 @@ function seriesTileHTML(group) {
 
 /** group the selected liver's voices into series, kept in year sections */
 function collectionGroups(liver) {
-  const files = visibleFiles().filter((f) => (f.liver || '기타') === liver);
+  const files = state.files.filter((f) => (f.liver || '기타') === liver);
   const years = new Map();
   for (const f of files) {
     const y = f.year || '기타';
@@ -1134,29 +1136,26 @@ function collectionGroups(liver) {
   return { byYear, groups: byYear.flatMap((s) => s.groups) };
 }
 
-/** livers to show: every selected liver when filtered, else the picked one */
+/** the one liver the collection is showing */
 function displayLivers() {
   const available = collectLivers();
-  if (state.filters.liver.size) {
-    const picked = available.filter(([name]) => state.filters.liver.has(name));
-    if (picked.length) return picked;
-  }
-  return available;
+  const wanted = state.collectionLiver || personal.lastLiver || '';
+  const hit = available.find(([name]) => name === wanted);
+  return hit ? [hit] : (available.length ? [available[0]] : []);
 }
 
 function renderCollection() {
   const area = $('#listArea');
-  const all = visibleFiles();
+  const all = state.files;
   if (!all.length) {
-    area.innerHTML = folderModeBar('collection', 0) + (state.files.length
-      ? emptyHTML({ icon: '🔍', title: '조건에 맞는 보이스가 없어요', desc: '검색어나 필터를 바꿔 보세요.', actions: '<button class="btn-line" data-act="reset-search">검색·필터 초기화</button>' })
-      : emptyHTML({ icon: '📂', title: '아직 보이스가 없어요', desc: '드라이브를 연결하면 라이버·연도별로 모아 보여드려요.' }));
+    area.innerHTML = folderModeBar('collection', 0)
+      + emptyHTML({ icon: '📂', title: '아직 보이스가 없어요', desc: '드라이브를 연결하면 라이버·연도별로 모아 보여드려요.' });
     return;
   }
 
   const livers = displayLivers();
-  const single = livers.length === 1;
-  if (single) state.collectionLiver = livers[0][0];
+  const single = true;
+  if (livers.length) state.collectionLiver = livers[0][0];
 
   const groupsFor = (liver) => collectionGroups(liver);
   const flat = livers.flatMap(([liver]) => groupsFor(liver).groups);
@@ -1194,6 +1193,16 @@ function renderCollection() {
 
   area.innerHTML = folderModeBar('collection', totalFiles) + head + sections;
   $('#listFoot').textContent = '';
+  prefetchSeriesCovers(flat);
+}
+
+/** warm the covers of the series on screen, five at a time */
+function prefetchSeriesCovers(groups) {
+  if (state.mode !== 'live' || !drive.connected) return;
+  for (const group of groups.slice(0, 18)) {
+    const file = group.files.find((f) => !coverInfoFor(f)) || group.files[0];
+    if (file) queueCover(file.id);
+  }
 }
 
 function renderSeriesDetail(groups) {
@@ -2932,6 +2941,10 @@ function bindEvents() {
   });
   on('#btnPlayAll', 'click', () => {
     let files = visibleFiles();
+    if (state.view === 'folders' && state.folderMode !== 'tree') {
+      const liver = state.collectionLiver || personal.lastLiver || '';
+      files = state.files.filter((f) => (f.liver || '기타') === liver);
+    }
     if (state.view === 'folders' && state.folderMode === 'tree') {
       files = state.files.filter((f) => f.parentId === (state.folderId || state.rootId));
     }
