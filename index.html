@@ -175,15 +175,18 @@
   window.addEventListener('unhandledrejection', function (e) {
     window.__errors.push('promise: ' + String((e.reason && e.reason.message) || e.reason));
   });
-  setTimeout(function () {
-    if (window.__appReady) return;
+  var bootTries = 0;
+  (function bootCheck() {
+    bootTries++;
+    if (window.__appReady) { var e = document.getElementById('bootError'); if (e) e.hidden = true; return; }
+    if (bootTries < 4) { setTimeout(bootCheck, 5000); return; }
     var b = document.getElementById('bootError');
     if (b) {
       b.hidden = false;
-      b.textContent = '앱을 불러오지 못했어요. 네트워크를 확인한 뒤 새로고침해 주세요.';
+      b.textContent = '앱을 불러오지 못했어요. 새로고침해 주세요.';
     }
-  }, 6000);
+  })();
 </script>
-<script type="module" src="js/app.js?v=85"></script>
+<script type="module" src="js/app.js?v=86"></script>
 </body>
 </html>
