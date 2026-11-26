@@ -464,12 +464,18 @@ function renderList() {
     files = visibleFiles();
     if (!files.length) {
       if (!state.files.length) {
-        area.innerHTML = emptyHTML({
-          icon: '🔌', title: 'Google 드라이브를 연결해 주세요',
-          desc: '지금은 데모 모드예요. 설정에서 OAuth Client ID를 넣고 연결하면<br>NIJISANJI 공유 드라이브의 NIJI VOICE 폴더를 불러옵니다.',
-          actions: `<button class="btn-line primary" data-act="connect">Google 계정 연결</button>
-                    <button class="btn-line" data-act="demo">데모 보기</button>`,
-        });
+        area.innerHTML = state.mode === 'live'
+          ? emptyHTML({
+            icon: '📂', title: '이 폴더에는 오디오 파일이 없어요',
+            desc: '연결된 폴더에 mp3 파일이 있는지 확인해 주세요.<br>폴더 ID가 다르면 설정에서 바꿀 수 있어요.',
+            actions: '<button class="btn-line primary" data-act="connect">폴더 설정 열기</button>',
+          })
+          : emptyHTML({
+            icon: '🔌', title: 'Google 드라이브를 연결해 주세요',
+            desc: '지금은 데모 모드예요. 설정에서 OAuth Client ID를 넣고 연결하면<br>NIJISANJI 공유 드라이브의 NIJI VOICE 폴더를 불러옵니다.',
+            actions: `<button class="btn-line primary" data-act="connect">Google 계정 연결</button>
+                      <button class="btn-line" data-act="demo">데모 보기</button>`,
+          });
       } else {
         area.innerHTML = emptyHTML({
           icon: '🔍', title: '조건에 맞는 파일이 없어요',
@@ -883,6 +889,7 @@ function fmtLeft(endsAt) {
 
 let dragging = false;
 function setSeek(t, dur, apply) {
+  if (dragging && !apply) return;
   const el = $('#seek');
   const pct = dur > 0 ? Math.min(100, (t / dur) * 100) : 0;
   if (!dragging || apply) el.value = String(dur > 0 ? Math.round((t / dur) * 1000) : 0);
@@ -1279,6 +1286,15 @@ function jumpTo(file, seconds) {
 
 /* subtitles */
 function openLyricsSheet(file) {
+  const rec = parsedCache.get(file.id);
+  if (!rec && !cachedEmpty.has(file.id) && !file.demo && state.mode === 'live') {
+    openSheet('자막', '<div class="loading"><span class="spin-ico"></span>자막을 읽는 중…</div>', { tall: true });
+    ui.sheet = 'lyrics';
+    loadParsed(file)
+      .then(() => { if (ui.sheet === 'lyrics') openLyricsSheet(file); })
+      .catch((e) => { toast(e?.message || '자막을 읽지 못했어요.', { err: true }); closeSheet(); });
+    return;
+  }
   ui.sheet = 'lyrics';
   const rec = parsedCache.get(file.id);
   const lyrics = rec?.lyrics || [];
