@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'" />
-<link rel="stylesheet" href="css/app.css?v=30" />
+<link rel="stylesheet" href="css/app.css?v=31" />
 </head>
 <body>
 
@@ -122,6 +122,7 @@
   <span class="selcount" id="selCount">0개 선택</span>
   <div class="selacts">
     <button type="button" data-sel="offline">오프라인</button>
+    <button type="button" data-sel="offline-remove" class="danger" hidden>오프라인 삭제</button>
     <button type="button" data-sel="tag">태그</button>
     <button type="button" data-sel="fav">즐겨찾기</button>
     <button type="button" data-sel="playlist">재생목록</button>
@@ -182,6 +183,6 @@
     }
   }, 6000);
 </script>
-<script type="module" src="js/app.js?v=53"></script>
+<script type="module" src="js/app.js?v=54"></script>
 </body>
 </html>

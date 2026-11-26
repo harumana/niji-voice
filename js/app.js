@@ -901,16 +901,16 @@ function renderPlaylists() {
       <div class="listhead">
         <button class="mini" data-act="pl-back">‹ 재생목록</button>
         <span>오프라인 저장 · ${files.length}개</span>
+        ${files.length ? `<span class="listhead-acts"><button type="button" class="mini" data-act="select-mode">${state.selectMode ? '선택 해제' : '선택'}</button></span>` : ''}
       </div>
       ${files.length ? files.map((f) => cardHTML(f)).join('')
         : emptyHTML({
           icon: '⬇️', title: '오프라인 저장한 보이스가 없어요',
           desc: '다른 재생목록에서 보이스를 골라 <b>오프라인</b>으로 저장하면<br>여기 모여 인터넷 없이도 들을 수 있어요.',
         })}
-      <div class="btnrow" style="margin:16px 4px 0">
+      ${files.length ? `<div class="btnrow" style="margin:16px 4px 0">
         <button class="btn-secondary" data-act="offline-play">전체 재생</button>
-        ${files.length ? '<button class="btn-secondary btn-danger" data-act="offline-clear-all">비우기</button>' : ''}
-      </div>`;
+      </div>` : ''}`;
     $('#listFoot').textContent = '';
     return;
   }
@@ -1680,12 +1680,36 @@ function highlight(text, q) {
 }
 
 /* ─────────────────────────── selection bar ─────────────────────────── */
+function inOfflineView() {
+  return state.view === 'playlists' && state.openPlaylistId === 'offline';
+}
+
 function renderSelectionBar() {
   const bar = $('#selBar');
   const n = state.selected.size;
   bar.hidden = !state.selectMode;
   $('#selCount').textContent = `${n}개 선택`;
+  const off = inOfflineView();
+  const rm = $('#selBar [data-sel="offline-remove"]');
+  if (rm) rm.hidden = !off;
+  $('#selBar [data-sel="offline"]').hidden = off;
   $$('#selBar [data-sel]').forEach((b) => { b.disabled = n === 0 && b.dataset.sel !== 'cancel'; });
+}
+
+/** 고른 것만 오프라인 저장에서 지운다 */
+async function offlineRemove(ids) {
+  if (!ids.length) return;
+  if (!confirm(`고른 ${ids.length}개를 오프라인 저장에서 지울까요?`)) return;
+  for (const id of ids) {
+    try { await db.del('audio', id); } catch {}
+    offlineIds.delete(id);
+  }
+  state.selected.clear();
+  state.selectMode = false;
+  toast(`${ids.length}개를 오프라인 저장에서 지웠어요`);
+  renderControlbar();
+  renderSelectionBar();
+  renderList();
 }
 
 /* ─────────────────────────── parsed ID3 & audio ─────────────────────────── */
@@ -3551,12 +3575,9 @@ async function onListClick(e) {
     return;
   }
   if (act === 'offline-clear-all') {
-    if (!offlineIds.size) return;
-    if (!confirm(`오프라인 저장한 ${offlineIds.size}개를 지울까요?`)) return;
-    await db.clear('audio');
-    offlineIds.clear();
-    toast('오프라인 저장을 비웠어요');
-    renderList();
+    // 통째로 비우지 않는다 — 선택 모드에서 고른 것만 지운다
+    if (!state.selectMode) toggleSelectMode();
+    toast('지울 항목을 고르고 오프라인 삭제를 눌러 주세요');
     return;
   }
   if (act === 'folder-mode') {
@@ -3619,7 +3640,14 @@ async function onListClick(e) {
     toast(`${files.length}개 재생 시작`);
     return;
   }
-  if (act === 'pl-back') { state.openPlaylistId = null; renderList(); return; }
+  if (act === 'pl-back') {
+    state.openPlaylistId = null;
+    state.selectMode = false;
+    state.selected.clear();
+    renderSelectionBar();
+    renderList();
+    return;
+  }
   if (act === 'pl-play') {
     const pl = personal.playlists.find((p) => p.id === state.openPlaylistId);
     const files = (pl?.fileIds || []).map(fileById).filter(Boolean);
@@ -3721,6 +3749,7 @@ function onSelAction(e) {
     renderControlbar(); renderSelectionBar();
     return;
   }
+  if (act === 'offline-remove') { offlineRemove(ids); return; }
   if (act === 'tag') { openTagSheet(ids); return; }
   if (act === 'fav') {
     const allFav = ids.every(isFav);

@@ -442,6 +442,8 @@ input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit
   font-size: 12px; font-weight: 600;
 }
 .selacts button.ghost { background: transparent; color: rgba(255, 255, 255, .62); }
+.selacts button.danger { background: rgba(255, 255, 255, .22); }
+.selacts button[hidden] { display: none; }
 .selacts button:disabled { opacity: .35; }
 
 /* ───────── mini player ───────── */
