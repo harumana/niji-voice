@@ -1359,12 +1359,34 @@ function liverInitial(name) {
   return m ? m[0] : '\u266A';
 }
 
-/* ── 라이버 키컬러 ──
-   각 라이버의 커버 이미지에서 대표색을 한 번 뽑아 저장해 두고, 새 라이버가 생겨도
-   커버가 들어오는 순간 같은 규칙으로 뽑아서 쓴다. */
-const LIVER_TONE_KEY = 'niji.livertone.v1';
-let liverTones = loadJSON(LIVER_TONE_KEY, {});
-const toneLearned = new Set();
+/* ── 라이버 컬러 ──
+   각 라이버의 공식 메인 컬러(니지산지 공식 사이트 프로필 배경색 / 펜라이트 색)를 쓴다.
+   표에 없는 라이버는 이름에서 만든 색으로 대신하고, 공식 컬러가 확인되면 여기에 추가한다. */
+const LIVER_COLORS = {
+  '甲斐田晴': '#4DD7E3',
+  '緋八マナ': '#64C8F0',
+  '風楽奏斗': '#F0F0F5',
+  '魁星': '#0C6F72',
+  '酒寄颯馬': '#BA6EA5',
+  '葛葉': '#ACA7BB',
+  '花籠つばさ': '#818FBF',
+  '篠宮ゆの': '#AAD9F4',
+  '神永タイガ': '#E4D571',
+  '皇れお': '#EEB1CC',
+  '渚トラウト': '#77B6C2',
+  '榊ネス': '#C2AAE6',
+  '山田龍一郎': '#82ACC8',
+  '塚原大地': '#4A4A5C',
+  '城瀬いすみ': '#E5E2F6',
+  '叶': '#ABD3D8',
+  '伊波ライ': '#DCFF50',
+  'エクス・アルビオ': '#5C9BBC',
+};
+
+/** '甲斐田晴(카이다 하루)' → '甲斐田晴' */
+function liverKey(name) {
+  return String(name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
 
 function hashHue(name) {
   let h = 0;
@@ -1372,86 +1394,24 @@ function hashHue(name) {
   return Math.abs(h) % 360;
 }
 
+function hexToRgb(hex) {
+  const v = hex.replace('#', '');
+  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+}
+const blend = (a, b, t) => Math.round(a + (b - a) * t);
+const rgbCss = (c) => `rgb(${c[0]} ${c[1]} ${c[2]})`;
+
+/** 공식 컬러 → 아바타 배경(옅게)·글자(진하게) */
 function liverTone(name) {
-  const t = liverTones[name];
-  const hue = t ? t[0] : hashHue(name);
-  const sat = t ? Math.min(Math.max(t[1], 45), 80) : 55;
-  return `background:hsl(${hue} ${sat}% 94.5%);color:hsl(${hue} ${Math.round(sat * 0.78)}% 37%)`;
-}
-
-/** 커버 한 장에서 대표색의 색상·채도를 뽑는다 */
-function keyColorOfImage(img) {
-  const n = 24;
-  const cv = document.createElement('canvas');
-  cv.width = n; cv.height = n;
-  const ctx = cv.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, n, n);
-  const { data } = ctx.getImageData(0, 0, n, n);
-  let best = null;
-  const buckets = new Map();
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-    if (a < 40) continue;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const l = (max + min) / 2 / 255;
-    const d = (max - min) / 255;
-    if (l > 0.95 || l < 0.06) continue;          // 흰 배경·검정 글자는 건너뛴다
-    if (d < 0.06) continue;                       // 무채색도 건너뛴다
-    const h = rgbToHue(r, g, b);
-    const k = Math.round(h / 12);                 // 12도 단위로 묶는다
-    const cur = buckets.get(k) || { w: 0, h: 0 };
-    cur.w += d;
-    cur.h += h * d;
-    buckets.set(k, cur);
+  const hex = LIVER_COLORS[liverKey(name)];
+  if (hex) {
+    const c = hexToRgb(hex);
+    const bg = c.map((v) => blend(v, 255, 0.86));
+    const fg = c.map((v) => blend(v, 0, 0.42));
+    return `background:${rgbCss(bg)};color:${rgbCss(fg)}`;
   }
-  for (const [k, v] of buckets) {
-    if (!best || v.w > best.w) best = { k, w: v.w, h: v.h / v.w };
-  }
-  if (!best) return null;
-  const hue = Math.round(best.h);
-  let sat = 55;
-  // 더 진한 색을 선호하되 너무 쨍하지 않게
-  sat = Math.round(Math.min(78, Math.max(48, 52 + Math.min(best.w, 8) * 3)));
-  return [hue, sat];
-}
-
-function rgbToHue(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const d = max - min;
-  if (!d) return 0;
-  let h;
-  if (max === r) h = ((g - b) / d) % 6;
-  else if (max === g) h = (b - r) / d + 2;
-  else h = (r - g) / d + 4;
-  h *= 60;
-  return h < 0 ? h + 360 : h;
-}
-
-/** 아직 색이 없는 라이버의 커버를 찾아 키컬러를 학습한다 */
-function learnLiverTones() {
-  if (state.mode !== 'live' && !state.files.length) return;
-  const livers = [...new Set(state.files.map((f) => f.liver || '기타'))];
-  let changed = false;
-  for (const liver of livers) {
-    if (liverTones[liver] || toneLearned.has(liver)) continue;
-    const file = state.files.find((f) => (f.liver || '기타') === liver && coverInfoFor(f));
-    if (!file) continue;
-    const cov = coverInfoFor(file);
-    toneLearned.add(liver);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      let tone = null;
-      try { tone = keyColorOfImage(img); } catch { tone = null; }
-      if (!tone) return;
-      liverTones[liver] = tone;
-      saveJSON(LIVER_TONE_KEY, liverTones);
-      changed = true;
-      if (state.view === 'folders') renderCollection();
-    };
-    img.src = cov.thumb || cov.full;
-  }
+  const hue = hashHue(name);
+  return `background:hsl(${hue} 50% 94.5%);color:hsl(${hue} 40% 37%)`;
 }
 
 function seriesTileHTML(group) {
@@ -1699,7 +1659,6 @@ function renderCollection() {
   prefetchSeriesCovers(flat);
   queueVisibleCovers();
   watchCovers();
-  learnLiverTones();
 }
 
 /** warm the covers of the series on screen, five at a time */
@@ -1715,8 +1674,6 @@ function prefetchSeriesCovers(groups) {
 function queueVisibleCovers(limit = 60) {
   const els = $$('#listArea [data-cover]:not([data-painted])').slice(0, limit);
   for (const el of els) queueCover(el.dataset.cover);
-  // 커버가 들어오면 그 라이버의 키컬러도 같이 배운다
-  setTimeout(learnLiverTones, 900);
 }
 
 function renderSeriesDetail(groups) {
