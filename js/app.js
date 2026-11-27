@@ -4212,11 +4212,30 @@ function bindEvents() {
     renderList();
   });
 
-  $('#btnRefresh').addEventListener('click', async () => {
-    if (state.loading) return;
-    if (!drive.connected) { await loadLive({ interactive: true }); return; }
-    await refresh(true);
-  });
+async function refreshCurrentView() {
+  if (state.loading) return;
+  if (!drive.connected) { await loadLive({ interactive: true }); return; }
+  if (state.view === 'notes') {
+    const rb = $('#btnRefresh');
+    rb?.classList.add('spin');
+    try {
+      await refreshMetaOnly();
+      toast('메모를 새로고침했어요');
+    } finally {
+      rb?.classList.remove('spin');
+    }
+    return;
+  }
+  if (state.view === 'lyrics') {
+    await refreshMetaOnly();
+    renderLyricsView();
+    toast('가사를 새로고침했어요');
+    return;
+  }
+  await refresh(true);
+}
+
+  $('#btnRefresh').addEventListener('click', refreshCurrentView);
 
   $('#btnSettings').addEventListener('click', openSettings);
   $('#btnNick').addEventListener('click', openNickname);
@@ -4425,8 +4444,7 @@ function bindPullToRefresh() {
     ptr.style.transform = 'translateY(10px)';
     label.textContent = '새로고침 중…';
     try {
-      if (state.loading) return;
-      await refresh(true);
+      await refreshCurrentView();
     } finally {
       busy = false;
       reset();
