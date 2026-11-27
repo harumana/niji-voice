@@ -403,7 +403,6 @@ const personal = Object.assign(
 if (!personal.nicknamesByEmail || typeof personal.nicknamesByEmail !== 'object') personal.nicknamesByEmail = {};
 
 const currentUserEmail = () => String(drive?.hint || personal.lastEmail || '').trim().toLowerCase();
-const priv = new PrivateNotes(drive, currentUserEmail);
 let notesFilter = 'all';
 const isMemoPrivate = () => localStorage.getItem('niji.memoPrivate') === '1';
 const setMemoPrivate = (v) => { try { localStorage.setItem('niji.memoPrivate', v ? '1' : '0'); } catch {} };
@@ -490,6 +489,7 @@ const drive = new Drive();
 drive.setClientId(settings.clientId);
 
 let shared = null;
+const priv = new PrivateNotes(drive, currentUserEmail);
 const parsedCache = new Map();   // fileId -> {title, artist, album, year, lyrics, coverUrl, coverType}
 const offlineIds = new Set();
 let player = null;
