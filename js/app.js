@@ -2092,7 +2092,7 @@ function memoCardHTML(n) {
   const mine = isMineItem(n);
   return `<div class="memo-card ${isNewNote(n) ? 'is-new' : ''}" data-note-card="${esc(n.id)}">
     <button type="button" class="memo-file" data-act="memo-jump" data-id="${esc(n.fileId)}" data-t="${n.t ?? ''}">
-      <span class="mf-name">${esc(displayName(n.file?.name || n.fileId))}</span>
+      <span class="mf-name">${esc(fileTrackLabel(n.file, n.fileId))}</span>
       <span class="mf-time">${n.t != null ? fmtTime(n.t) : '전체'}</span>
     </button>
     <div class="memo">
@@ -2231,9 +2231,18 @@ async function runLyricsSearch() {
       <span class="hit-line">
         <span class="hit-orig">${highlight(h.orig, q)}</span>
         ${h.trans ? `<span class="hit-trans">${highlight(h.trans, q)}</span>` : ''}
-        <span class="hit-file">${esc(displayName(h.file?.name || h.fileId))}</span>
+        <span class="hit-file">${esc(fileTrackLabel(h.file, h.fileId))}</span>
       </span>
     </button>`).join('');
+}
+
+function fileTrackLabel(f, fallbackId = '') {
+  if (!f) return fallbackId;
+  const livers = liversOf(f);
+  const liverText = livers.length ? livers.join(', ') : (f.liver || '');
+  const sub = f.path && f.path.length > 1 ? f.path.slice(1).join(' / ') : (f.year || '');
+  const title = displayName(f.name || fallbackId);
+  return [liverText, sub, title].filter(Boolean).join(' · ');
 }
 
 function highlight(text, q) {

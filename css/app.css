@@ -848,7 +848,7 @@ body.selmode .btn-playall { opacity: 0; pointer-events: none; }
 .hit .hit-line { flex: 1 1 auto; min-width: 0; }
 .hit .hit-orig { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .hit .hit-trans { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-.hit .hit-file { font-size: 10.5px; color: var(--faint); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit .hit-file { font-size: 11px; color: var(--faint); margin-top: 4px; white-space: normal; word-break: break-word; line-height: 1.4; }
 .hit mark { background: color-mix(in srgb, var(--accent) 18%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 
 /* ───────── 재생 목록(대기열) ───────── */
