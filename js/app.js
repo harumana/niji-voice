@@ -386,8 +386,13 @@ function debounce(fn, ms) {
 
 /* ─────────────────────────── state ─────────────────────────── */
 const DEFAULT_CLIENT_ID = '933433222359-8deoeh6c8mva4sbl9bv90gunkbe600lo.apps.googleusercontent.com';
+const isValidDriveId = (v) => /^[\w-]{10,}$/.test(String(v || '').trim());
 const settings = Object.assign({ clientId: DEFAULT_CLIENT_ID, rootId: '' }, loadJSON(SETTINGS_KEY, {}));
 if (!settings.clientId) settings.clientId = DEFAULT_CLIENT_ID;
+if (settings.rootId && !isValidDriveId(settings.rootId)) {
+  settings.rootId = '';
+  saveJSON(SETTINGS_KEY, settings);
+}
 const personal = Object.assign(
   { nickname: '게스트', nicknamesByEmail: {}, lastEmail: '', favorites: {}, playlists: [], notesSeenAt: 0, lastFileId: null, lastLiver: null },
   loadJSON(PERSONAL_KEY, {})
@@ -526,6 +531,23 @@ function showDisconnected() {
   renderAll();
 }
 
+async function resolveRootId() {
+  const found = await drive.findFolderByName('NIJI VOICE');
+  if (!found.length) throw new Error('드라이브에서 "NIJI VOICE" 폴더를 찾지 못했어요. 설정에서 폴더 ID를 직접 넣어 주세요.');
+  let pick = null;
+  if (found.length > 1) {
+    try {
+      const drives = await drive.listDrives();
+      const target = drives.find((d) => /NIJISANJI/i.test(d.name || ''));
+      pick = target ? found.find((f) => f.driveId === target.id) : null;
+    } catch {}
+  }
+  pick = pick || found.find((f) => f.driveId) || found[0];
+  settings.rootId = pick.id;
+  saveJSON(SETTINGS_KEY, settings);
+  return pick.id;
+}
+
 async function loadLive({ interactive = false, silent = false } = {}) {
   if (!settings.clientId) {
     if (!silent) toast('먼저 설정에서 OAuth Client ID를 입력해 주세요.', { err: true });
@@ -540,29 +562,32 @@ async function loadLive({ interactive = false, silent = false } = {}) {
       else await drive.ensure({ interactive });
     }
 
-    if (!settings.rootId) {
-      const found = await drive.findFolderByName('NIJI VOICE');
-      if (!found.length) throw new Error('드라이브에서 "NIJI VOICE" 폴더를 찾지 못했어요. 설정에서 폴더 ID를 직접 넣어 주세요.');
-      let pick = null;
-      if (found.length > 1) {
-        try {
-          const drives = await drive.listDrives();
-          const target = drives.find((d) => /NIJISANJI/i.test(d.name || ''));
-          pick = target ? found.find((f) => f.driveId === target.id) : null;
-        } catch {}
-      }
-      pick = pick || found.find((f) => f.driveId) || found[0];
-      settings.rootId = pick.id;
-      saveJSON(SETTINGS_KEY, settings);
+    if (!isValidDriveId(settings.rootId)) {
+      await resolveRootId();
     }
 
-    const tree = await drive.tree(settings.rootId, {
+    let tree = await drive.tree(settings.rootId, {
       skipFolder: skipFolderFilter,
       onProgress: silent ? undefined : ({ done }) => { setConnText(`불러오는 중… (${done}개 폴더)`); },
     });
-    const meta = new SharedMeta(drive, settings.rootId);
+    let meta = new SharedMeta(drive, settings.rootId);
     meta.onError = (e) => toast(`공유 메모 저장 실패: ${e?.message || e}`, { err: true, ms: 4000 });
-    await meta.load();
+    try {
+      await meta.load();
+    } catch (e) {
+      if (/file not found/i.test(e?.message || '')) {
+        await resolveRootId();
+        tree = await drive.tree(settings.rootId, {
+          skipFolder: skipFolderFilter,
+          onProgress: silent ? undefined : ({ done }) => { setConnText(`불러오는 중… (${done}개 폴더)`); },
+        });
+        meta = new SharedMeta(drive, settings.rootId);
+        meta.onError = (e2) => toast(`공유 메모 저장 실패: ${e2?.message || e2}`, { err: true, ms: 4000 });
+        await meta.load();
+      } else {
+        throw e;
+      }
+    }
     shared = meta;
     meta.onChange(() => saveMetaCache(meta.data));
     state.mode = 'live';
@@ -2894,7 +2919,8 @@ function parseFolderInput(v) {
   const s = String(v || '').trim();
   if (!s) return '';
   const m = s.match(/folders\/([\w-]{10,})/) || s.match(/[?&]id=([\w-]{10,})/);
-  return m ? m[1] : s;
+  if (m) return m[1];
+  return isValidDriveId(s) ? s : '';
 }
 
 async function saveSettingsFromUI() {
