@@ -829,6 +829,27 @@ body.selmode .btn-playall { opacity: 0; pointer-events: none; }
 .lrc-line.is-on .trans { color: #6b7280; font-weight: 400; }
 .lrc-empty { padding: 22px 12px; text-align: center; color: var(--faint); font-size: 12.5px; line-height: 1.7; }
 
+.notes-filter { display: flex; gap: 6px; margin: 2px 0 12px; flex-wrap: wrap; }
+.privbadge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); padding: 1px 6px; border-radius: 999px;
+}
+.np-memo-scope {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+.priv-toggle {
+  font-size: 11.5px; font-weight: 700;
+  padding: 5px 10px; border-radius: 999px;
+  background: var(--fill); color: var(--muted);
+  border: 1px solid var(--line);
+}
+.priv-toggle.is-on {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.np-memo-scope .scope-hint { font-size: 11px; color: var(--faint); }
 .lyrics-search { display: flex; gap: 8px; margin: 4px 0 14px; }
 .lyrics-search input {
   flex: 1 1 auto; height: 40px; padding: 0 14px;

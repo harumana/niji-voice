@@ -781,3 +781,161 @@ export class SharedMeta {
     return rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }
 }
+
+/* ─────────────────────────── private notes (내 드라이브 전용) ─────────────────────────── */
+
+export const PRIVATE_META_NAME = '_niji_voice_private.json';
+
+function emptyPrivate() {
+  return { version: 1, updatedAt: '', notes: {} };
+}
+
+function normalizePrivate(raw) {
+  const out = emptyPrivate();
+  if (!raw || typeof raw !== 'object') return out;
+  out.updatedAt = raw.updatedAt || '';
+  if (raw.notes && typeof raw.notes === 'object') {
+    for (const [k, v] of Object.entries(raw.notes)) {
+      if (!Array.isArray(v)) continue;
+      out.notes[k] = v
+        .filter((n) => n && typeof n.text === 'string' && n.text.trim())
+        .map((n) => ({
+          id: noteId(n),
+          text: String(n.text).slice(0, 500),
+          t: Number.isFinite(Number(n.t)) ? Number(n.t) : null,
+          createdAt: n.createdAt || new Date().toISOString(),
+          isPrivate: true,
+        }));
+    }
+  }
+  return out;
+}
+
+export class PrivateNotes {
+  constructor(drive, getEmail = () => '') {
+    this.drive = drive;
+    this.getEmail = getEmail;
+    this.fileId = null;
+    this.removedIds = new Set();
+    this.data = this.loadLocal();
+    this._saving = null;
+  }
+
+  storageKey() {
+    const e = String(this.getEmail?.() || '').trim().toLowerCase();
+    return e ? `niji.privateNotes.${e}` : 'niji.privateNotes';
+  }
+
+  loadLocal() {
+    try {
+      const s = localStorage.getItem(this.storageKey()) || localStorage.getItem('niji.privateNotes');
+      return s ? normalizePrivate(JSON.parse(s)) : emptyPrivate();
+    } catch {
+      return emptyPrivate();
+    }
+  }
+
+  saveLocal() {
+    try { localStorage.setItem(this.storageKey(), JSON.stringify(this.data)); } catch {}
+  }
+
+  async load() {
+    const local = this.loadLocal();
+    this.data = local;
+    if (!this.drive.connected && !this.drive.token) return this.data;
+    try {
+      const found = await this.drive.findChildByName('root', PRIVATE_META_NAME);
+      if (found) {
+        this.fileId = found.id;
+        const remote = normalizePrivate(JSON.parse(await this.drive.getText(found.id)));
+        this.data = this.mergeWith(remote);
+        this.saveLocal();
+      }
+    } catch {}
+    return this.data;
+  }
+
+  mergeWith(remote) {
+    const out = normalizePrivate(remote);
+    for (const [fileId, notes] of Object.entries(this.data.notes)) {
+      const byId = new Map((out.notes[fileId] || []).map((n) => [n.id, n]));
+      for (const n of notes) if (!byId.has(n.id)) byId.set(n.id, n);
+      const merged = [...byId.values()]
+        .filter((n) => !this.removedIds.has(n.id))
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      if (merged.length) out.notes[fileId] = merged; else delete out.notes[fileId];
+    }
+    out.updatedAt = new Date().toISOString();
+    return out;
+  }
+
+  async flush() {
+    if (!this.drive.connected && !this.drive.token) return;
+    let remote = emptyPrivate();
+    if (this.fileId) {
+      try { remote = normalizePrivate(JSON.parse(await this.drive.getText(this.fileId))); } catch {}
+    } else {
+      const found = await this.drive.findChildByName('root', PRIVATE_META_NAME);
+      if (found) {
+        this.fileId = found.id;
+        try { remote = normalizePrivate(JSON.parse(await this.drive.getText(found.id))); } catch {}
+      }
+    }
+    const merged = this.mergeWith(remote);
+    this.data = merged;
+    this.saveLocal();
+    const text = JSON.stringify(merged, null, 1);
+    if (this.fileId) await this.drive.updateJsonFile(this.fileId, text);
+    else {
+      const r = await this.drive.createJsonFile('root', PRIVATE_META_NAME, text);
+      this.fileId = r.id;
+    }
+  }
+
+  async commit(mutator) {
+    mutator(this.data);
+    this.data.updatedAt = new Date().toISOString();
+    this.saveLocal();
+    if (!this.drive.connected && !this.drive.token) return;
+    const prev = this._saving || Promise.resolve();
+    this._saving = prev.then(() => this.flush()).catch(() => {});
+    return this._saving;
+  }
+
+  notesOf(fileId) {
+    return (this.data.notes[fileId] || []).map((n) => ({ ...n, isPrivate: true })).sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+  }
+
+  allNotes() {
+    const rows = [];
+    for (const [fileId, notes] of Object.entries(this.data.notes)) {
+      for (const n of notes) rows.push({ ...n, fileId, isPrivate: true });
+    }
+    return rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  }
+
+  async addNote(fileId, { text, t }) {
+    const note = {
+      id: 'pn_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      text: String(text || '').slice(0, 500),
+      t: Number.isFinite(t) ? Math.round(t * 10) / 10 : null,
+      createdAt: new Date().toISOString(),
+      isPrivate: true,
+    };
+    await this.commit((d) => {
+      d.notes[fileId] = [...(d.notes[fileId] || []), note];
+    });
+    return note;
+  }
+
+  async removeNote(fileId, noteIdValue) {
+    const list = this.data.notes[fileId] || [];
+    if (!list.some((n) => n.id === noteIdValue)) return false;
+    this.removedIds.add(noteIdValue);
+    await this.commit((d) => {
+      d.notes[fileId] = (d.notes[fileId] || []).filter((n) => n.id !== noteIdValue);
+      if (!d.notes[fileId].length) delete d.notes[fileId];
+    });
+    return true;
+  }
+}
