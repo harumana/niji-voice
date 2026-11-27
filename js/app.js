@@ -385,10 +385,13 @@ function debounce(fn, ms) {
 }
 
 /* ─────────────────────────── state ─────────────────────────── */
-const DEFAULT_CLIENT_ID = '933433222359-8deoeh6c8mva4sbl9bv90gunkbe600lo.apps.googleusercontent.com';
+const DEFAULT_CLIENT_ID = '913725697175-67u6qe3r7nl33hhcknfsr4n4svmdfs4g.apps.googleusercontent.com';
 const isValidDriveId = (v) => /^[\w-]{10,}$/.test(String(v || '').trim());
 const settings = Object.assign({ clientId: DEFAULT_CLIENT_ID, rootId: '' }, loadJSON(SETTINGS_KEY, {}));
-if (!settings.clientId) settings.clientId = DEFAULT_CLIENT_ID;
+if (!settings.clientId || settings.clientId === '933433222359-8deoeh6c8mva4sbl9bv90gunkbe600lo.apps.googleusercontent.com') {
+  settings.clientId = DEFAULT_CLIENT_ID;
+  saveJSON(SETTINGS_KEY, settings);
+}
 if (settings.rootId && !isValidDriveId(settings.rootId)) {
   settings.rootId = '';
   saveJSON(SETTINGS_KEY, settings);
