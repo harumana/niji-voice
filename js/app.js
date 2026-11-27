@@ -1016,7 +1016,7 @@ function cardHTML(f, { playlist = false } = {}) {
     </div>
     <div class="card-side">
       <button class="star ${isFav(f.id) ? 'is-on' : ''}" data-act="fav" aria-label="즐겨찾기">
-        <svg><use href="${isFav(f.id) ? '#i-heart-fill' : '#i-heart'}"/></svg>
+        <svg><use href="${isFav(f.id) ? '#i-star-fill' : '#i-star'}"/></svg>
       </button>
       <button class="cbtn-play" data-act="play" aria-label="재생">
         <svg><use href="${playing && player?.isPlaying ? '#i-pause' : '#i-play'}"/></svg>
@@ -1160,7 +1160,7 @@ function renderPlaylists() {
   const favCount = state.files.filter((f) => isFav(f.id)).length;
   const favRow = `
     <button class="pl-row pl-gold" data-act="pl-fav">
-      <span class="pl-ico"><svg><use href="#i-heart-fill"/></svg></span>
+      <span class="pl-ico"><svg><use href="#i-star-fill"/></svg></span>
       <span class="pl-name">즐겨찾기</span>
       <span class="pl-count">${favCount}개</span>
       <svg style="width:16px;height:16px;color:var(--muted)"><use href="#i-chevron"/></svg>
@@ -3425,7 +3425,7 @@ function openNowPlaying() {
           <span class="np-trk" id="npTrk" title="트랙 번호">${esc(trackNoFor(file))}</span>
           <div class="np-title" id="npTitle">${esc(displayTitleOf(file))}</div>
           <button type="button" class="np-fav ${isFav(file.id) ? 'is-on' : ''}" id="npFav" data-act="np-fav" aria-label="즐겨찾기">
-            <svg><use href="${isFav(file.id) ? '#i-heart-fill' : '#i-heart'}"/></svg>
+            <svg><use href="${isFav(file.id) ? '#i-star-fill' : '#i-star'}"/></svg>
           </button>
         </div>
         <div class="np-sub" id="npSub">${esc([p.artist, p.album].filter(Boolean).join(' · ') || file.liver || '')}</div>
@@ -3523,7 +3523,7 @@ function openNowPlaying() {
       const on = isFav(file.id);
       b.classList.toggle('is-on', on);
       const use = b.querySelector('use');
-      if (use) use.setAttribute('href', on ? '#i-heart-fill' : '#i-heart');
+      if (use) use.setAttribute('href', on ? '#i-star-fill' : '#i-star');
       renderList();
       renderSelectionBar();
       return;
